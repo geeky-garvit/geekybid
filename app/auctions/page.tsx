@@ -1,13 +1,29 @@
-import AuctionCard from '@/components/auction/AuctionCard';
-import { Auction } from '@/lib/types/auction';
+import { Suspense } from 'react';
 import Link from 'next/link';
+import AuctionCard from '@/components/auction/AuctionCard';
+import FilterBar from '@/components/auction/FilterBar';
+import { Auction } from '@/lib/types/auction';
 
-async function getFilteredAuctions(category?: string, maxPrice?: string, sort?: string): Promise<Auction[]> {
+async function getAuctions(category?: string, query?: string): Promise<Auction[]> {
   try {
-    const res = await fetch('https://dummyjson.com/products?limit=30', { next: { revalidate: 60 } });
-    const data = await res.json();
+    let url = 'https://dummyjson.com/products?limit=20';
+    if (category && category !== 'all') {
+      url = `https://dummyjson.com/products/category/${encodeURIComponent(category)}`;
+    }
 
-    let auctions: Auction[] = data.products.map((item: any) => ({
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    let items = data.products || [];
+
+    if (query) {
+      items = items.filter((item: any) =>
+        item.title.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+
+    return items.map((item: any) => ({
       id: String(item.id),
       title: item.title,
       description: item.description,
@@ -15,9 +31,9 @@ async function getFilteredAuctions(category?: string, maxPrice?: string, sort?: 
       startingPrice: Math.round(item.price * 0.7),
       currentHighestBid: item.price,
       minIncrement: 5,
-      bidsCount: Math.floor(Math.random() * 30) + 1,
-      images: item.images && item.images.length > 0 ? item.images : [`https://picsum.photos/seed/${item.id}/600/600`],
-      endTime: new Date(Date.now() + (item.id % 5 + 1) * 3600 * 1000).toISOString(),
+      bidsCount: Math.floor(Math.random() * 15) + 1,
+      images: item.images?.length ? item.images : [`https://picsum.photos/seed/${item.id}/600/600`],
+      endTime: new Date(Date.now() + 3600 * 1000 * ((item.id % 5) + 1)).toISOString(),
       status: 'live',
       seller: {
         id: `seller-${item.id}`,
@@ -25,24 +41,8 @@ async function getFilteredAuctions(category?: string, maxPrice?: string, sort?: 
         avatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=Seller_${item.id}`,
         rating: 4.8,
       },
-      history: [],
     }));
-
-    if (category && category !== 'all') {
-      auctions = auctions.filter((a) => a.category.toLowerCase() === category.toLowerCase());
-    }
-
-    if (maxPrice) {
-      auctions = auctions.filter((a) => a.currentHighestBid <= Number(maxPrice));
-    }
-
-    if (sort === 'price-asc') auctions.sort((a, b) => a.currentHighestBid - b.currentHighestBid);
-    if (sort === 'price-desc') auctions.sort((a, b) => b.currentHighestBid - a.currentHighestBid);
-    if (sort === 'bids') auctions.sort((a, b) => b.bidsCount - a.bidsCount);
-
-    return auctions;
-  } catch (error) {
-    console.error(error);
+  } catch {
     return [];
   }
 }
@@ -50,38 +50,38 @@ async function getFilteredAuctions(category?: string, maxPrice?: string, sort?: 
 export default async function AuctionsListingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; maxPrice?: string; sort?: string }>;
+  searchParams: Promise<{ category?: string; q?: string }>;
 }) {
-  const { category, maxPrice, sort } = await searchParams;
-  const auctions = await getFilteredAuctions(category, maxPrice, sort);
+  const { category, q } = await searchParams;
+  const auctions = await getAuctions(category, q);
 
   return (
-    <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-3xl font-black text-purple-950 tracking-tight">Marketplace Auctions</h1>
-        <p className="text-purple-900/60 text-sm">Filter through active listings or click an item for quick view.</p>
-      </header>
-
-      {/* URL-driven Filters Bar */}
-      <div className="flex flex-wrap gap-3 p-4 bg-white border border-purple-100 rounded-2xl shadow-sm text-xs font-semibold">
-        <span className="text-slate-400 self-center">Categories:</span>
-        <Link href="/auctions?category=all" className={`px-3 py-1.5 rounded-lg border ${!category || category === 'all' ? 'bg-purple-600 text-white border-purple-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>All</Link>
-        <Link href="/auctions?category=beauty" className={`px-3 py-1.5 rounded-lg border ${category === 'beauty' ? 'bg-purple-600 text-white border-purple-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>Beauty</Link>
-        <Link href="/auctions?category=fragrances" className={`px-3 py-1.5 rounded-lg border ${category === 'fragrances' ? 'bg-purple-600 text-white border-purple-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>Fragrances</Link>
-        <Link href="/auctions?category=furniture" className={`px-3 py-1.5 rounded-lg border ${category === 'furniture' ? 'bg-purple-600 text-white border-purple-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>Furniture</Link>
-        <Link href="/auctions?category=groceries" className={`px-3 py-1.5 rounded-lg border ${category === 'groceries' ? 'bg-purple-600 text-white border-purple-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>Groceries</Link>
-
-        <span className="text-slate-400 self-center ml-auto">Sort:</span>
-        <Link href={`/auctions?sort=bids${category ? `&category=${category}` : ''}`} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">Most Active</Link>
-        <Link href={`/auctions?sort=price-asc${category ? `&category=${category}` : ''}`} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">Price: Low to High</Link>
+    <main className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-purple-100 pb-4">
+        <div>
+          <h1 className="text-3xl font-black text-purple-950 tracking-tight">Explore Auctions</h1>
+          <p className="text-xs text-purple-900/60">Discover live bids on rare tech, collectibles, and hardware.</p>
+        </div>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {auctions.map((auction) => (
-          <AuctionCard key={auction.id} auction={auction} />
-        ))}
-      </div>
+      <Suspense fallback={<div className="h-16 bg-purple-50/50 rounded-2xl animate-pulse" />}>
+        <FilterBar currentCategory={category || 'all'} searchQuery={q || ''} />
+      </Suspense>
+
+      {auctions.length === 0 ? (
+        <div className="text-center py-12 bg-purple-50/50 rounded-2xl border border-purple-100">
+          <p className="text-slate-600 font-bold text-sm">No auctions found matching your filter.</p>
+          <Link href="/auctions" className="text-xs font-bold text-purple-600 underline mt-2 inline-block">
+            Clear Filters
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {auctions.map((auction) => (
+            <AuctionCard key={auction.id} auction={auction} />
+          ))}
+        </div>
+      )}
     </main>
   );
 }

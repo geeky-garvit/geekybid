@@ -1,4 +1,3 @@
-'use me';
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -16,20 +15,16 @@ export async function createAuctionAction(
   const description = formData.get('description') as string;
   const category = formData.get('category') as string;
   const startingPrice = Number(formData.get('startingPrice'));
-  const minIncrement = Number(formData.get('minIncrement')) || 5;
-  const durationHours = Number(formData.get('durationHours')) || 24;
 
   if (!title || !description || !category || isNaN(startingPrice) || startingPrice <= 0) {
     return { error: 'Please fill in all required fields with valid values.' };
   }
 
-  // Calculate end time based on duration selected
-  const endTime = new Date(Date.now() + durationHours * 3600 * 1000).toISOString();
-
-  // Revalidate marketplaces and seller dashboard
+  // Revalidate cache for auction lists
   revalidatePath('/auctions');
   revalidatePath('/seller/dashboard');
   revalidatePath('/');
 
+  // Redirect outside try/catch
   redirect('/seller/dashboard');
 }

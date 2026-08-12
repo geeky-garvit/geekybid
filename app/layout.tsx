@@ -1,14 +1,13 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
-import Header from '@/components/ui/Header';
+import { Inter } from 'next/font/google';
+import Navbar from '@/components/layout/Navbar';
 import './globals.css';
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'GeekyBid - Rare Tech & Collectibles Auctions',
-  description: 'Bid on rare tech items, collectibles, and geek gear in real-time.',
+  title: 'GeekyBid - Real-Time Tech & Collectibles Auction Platform',
+  description: 'Bid on rare tech, retro hardware, and collectibles in real-time.',
 };
 
 export default function RootLayout({
@@ -20,11 +19,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-slate-50/50 text-slate-900 flex flex-col`}>
-        <Header />
-        <div className="flex-1">
-          {children}
-        </div>
+      <body className={`${inter.className} bg-slate-50/50 text-slate-900 antialiased min-h-screen flex flex-col`}>
+        <Navbar />
+        <div className="flex-1">{children}</div>
         {modal}
       </body>
     </html>

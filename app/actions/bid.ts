@@ -1,4 +1,3 @@
-'use me';
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -36,18 +35,15 @@ export async function placeBidAction(
     };
   }
 
-  // Anti-sniping check: extend end time if bid placed in last 2 minutes
   let newEndTime = endTimeStr;
   const now = Date.now();
   const end = new Date(endTimeStr).getTime();
   const timeRemainingMs = end - now;
 
   if (timeRemainingMs > 0 && timeRemainingMs <= 2 * 60 * 1000) {
-    // Add 2 minutes
     newEndTime = new Date(end + 2 * 60 * 1000).toISOString();
   }
 
-  // Revalidate detail page and marketplace listing
   revalidatePath(`/auction/${auctionId}`);
   revalidatePath('/auctions');
 
