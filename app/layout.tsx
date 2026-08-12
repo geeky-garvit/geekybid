@@ -1,13 +1,10 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import Navbar from '@/components/layout/Navbar';
+import Navbar from '../components/Navbar';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
-
 export const metadata: Metadata = {
-  title: 'GeekyBid - Real-Time Tech & Collectibles Auction Platform',
-  description: 'Bid on rare tech, retro hardware, and collectibles in real-time.',
+  title: 'Geeky Bid',
+  description: 'Live Auction Platform',
 };
 
 export default function RootLayout({
@@ -15,13 +12,15 @@ export default function RootLayout({
   modal,
 }: Readonly<{
   children: React.ReactNode;
-  modal: React.ReactNode;
+  modal?: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-slate-50/50 text-slate-900 antialiased min-h-screen flex flex-col`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className="bg-slate-50/50 text-slate-900 antialiased" suppressHydrationWarning>
         <Navbar />
-        <div className="flex-1">{children}</div>
+        <main className="min-h-screen">
+          {children}
+        </main>
         {modal}
       </body>
     </html>

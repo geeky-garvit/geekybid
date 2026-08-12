@@ -1,11 +1,18 @@
-import Modal from '@/components/modal/Modal';
+import { getAuctionById } from '@/lib/data';
 import AuctionDetailView from '@/components/auction/AuctionDetailView';
+import { notFound } from 'next/navigation';
 
-export default async function AuctionModal({ params }: { params: Promise<{ id: string }> }) {
+interface ModalProps {
+  params: Promise<{ id: string }>;
+}
+
+export default async function AuctionModal({ params }: ModalProps) {
   const { id } = await params;
-  return (
-    <Modal>
-      <AuctionDetailView auctionId={id} />
-    </Modal>
-  );
+  const auction = await getAuctionById(id);
+
+  if (!auction) {
+    notFound();
+  }
+
+  return <AuctionDetailView auction={auction} />;
 }

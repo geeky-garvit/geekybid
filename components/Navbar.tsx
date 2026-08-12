@@ -1,4 +1,3 @@
-// components/Navbar.tsx
 'use client';
 
 import Link from 'next/link';
@@ -17,14 +16,12 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-purple-100">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <span className="text-xl font-black text-purple-950 tracking-tight">
             Geeky<span className="text-purple-600">Bid</span>
           </span>
         </Link>
 
-        {/* Navigation Links */}
         <nav className="flex items-center gap-1 sm:gap-2">
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
