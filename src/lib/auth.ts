@@ -1,4 +1,3 @@
-// src/lib/auth.ts
 import { cookies } from 'next/headers';
 
 export interface UserSession {
@@ -32,7 +31,10 @@ export const MOCK_USERS: UserSession[] = [
 export async function getCurrentUser(): Promise<UserSession | null> {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get('user_session')?.value;
-  if (!sessionCookie) return null;
+
+  if (!sessionCookie) {
+    return null;
+  }
 
   try {
     return JSON.parse(sessionCookie) as UserSession;

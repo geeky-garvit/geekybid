@@ -1,3 +1,4 @@
+// src/app/components/UserSwitcherModal.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -8,6 +9,8 @@ export default function UserSwitcherModal() {
   const { user, switchUser, logout } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
 
+  const profilesList = MOCK_PROFILES || [];
+
   return (
     <div className="relative">
       {/* Current User Pill / Trigger */}
@@ -17,11 +20,19 @@ export default function UserSwitcherModal() {
           className="flex items-center gap-2.5 bg-slate-100 hover:bg-slate-200 p-1.5 pr-3 rounded-full transition border border-slate-200"
         >
           <div className="relative w-8 h-8 rounded-full overflow-hidden bg-purple-100 border border-purple-300">
-            <Image src={user.avatar} alt={user.name} fill className="object-cover" />
+            <Image
+              src={user.avatar}
+              alt={user.name}
+              fill
+              className="object-cover"
+              sizes="32px"
+            />
           </div>
           <div className="text-left hidden sm:block">
             <p className="text-xs font-bold text-slate-800 leading-none">{user.name}</p>
-            <p className="text-[10px] font-semibold text-purple-600 leading-tight">{user.role}</p>
+            <p className="text-[10px] font-semibold text-purple-600 leading-tight capitalize">
+              {user.role}
+            </p>
           </div>
           <span className="text-xs text-slate-400">▼</span>
         </button>
@@ -41,7 +52,8 @@ export default function UserSwitcherModal() {
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
 
           <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
-            <div className="border-b pb-2 flex justify-between items-center">
+            {/* Header */}
+            <div className="border-b border-slate-100 pb-2 flex justify-between items-center">
               <div>
                 <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">
                   Switch Profile
@@ -58,7 +70,7 @@ export default function UserSwitcherModal() {
 
             {/* Profile List */}
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {MOCK_PROFILES.map((profile: UserProfile) => {
+              {profilesList.map((profile: UserProfile) => {
                 const isActive = user?.id === profile.id;
                 return (
                   <button
@@ -74,15 +86,27 @@ export default function UserSwitcherModal() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="relative w-9 h-9 rounded-full overflow-hidden bg-slate-100 border">
-                        <Image src={profile.avatar} alt={profile.name} fill />
+                      <div className="relative w-9 h-9 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                        <Image
+                          src={profile.avatar}
+                          alt={profile.name}
+                          fill
+                          className="object-cover"
+                          sizes="36px"
+                        />
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-900">{profile.name}</p>
-                        <p className="text-[10px] text-slate-500">{profile.email}</p>
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {profile.name}
+                        </p>
+                        <p className="text-[10px] text-slate-500 truncate">{profile.email}</p>
                       </div>
                     </div>
-                    {isActive && <span className="text-xs text-purple-600 font-bold">Active</span>}
+                    {isActive && (
+                      <span className="text-[10px] text-purple-600 font-bold shrink-0 ml-2">
+                        Active
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -90,7 +114,7 @@ export default function UserSwitcherModal() {
 
             {/* Footer Action */}
             {user && (
-              <div className="border-t pt-2">
+              <div className="border-t border-slate-100 pt-2">
                 <button
                   onClick={() => {
                     logout();

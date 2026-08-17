@@ -1,11 +1,11 @@
-// app/auctions/layout.tsx
-export default function AuctionsLayout({
-  children,
-  modal,
-}: {
+import React from 'react';
+
+interface AuctionsLayoutProps {
   children: React.ReactNode;
   modal: React.ReactNode;
-}) {
+}
+
+export default function AuctionsLayout({ children, modal }: AuctionsLayoutProps) {
   return (
     <>
       {children}

@@ -1,13 +1,26 @@
-// app/api/cron/close-auctions/route.ts
 import { NextResponse } from 'next/server';
 import { closeExpiredAuctions } from '@/lib/store';
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET || 'secret123'}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  try {
+    const authHeader = request.headers.get('authorization');
+    const secretKey = process.env.CRON_SECRET || 'secret123';
 
-  const closed = closeExpiredAuctions();
-  return NextResponse.json({ success: true, closedCount: closed.length, closed });
+    if (authHeader !== `Bearer ${secretKey}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const closed = closeExpiredAuctions();
+
+    return NextResponse.json({
+      success: true,
+      closedCount: closed.length,
+      closed,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal Server Error' },
+      { status: 500 }
+    );
+  }
 }

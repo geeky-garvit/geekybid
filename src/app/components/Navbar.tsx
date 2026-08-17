@@ -1,32 +1,48 @@
-// src/components/Navbar.tsx
 'use client';
 
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
+import { useCart } from '@/context/CartContext';
 
 export default function Navbar() {
   const { user, watchlist, login, logout, presetUsers } = useAuth();
+  const { cartCount } = useCart();
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="text-xl font-black text-purple-950 flex items-center gap-2">
-          <span>⚡</span> GeekyBid
+          GeekyBid
         </Link>
 
         <nav className="flex items-center gap-6 text-xs font-bold text-slate-600">
           <Link href="/auctions" className="hover:text-purple-600 transition">
             Explore Marketplace
           </Link>
+          
           <Link href="/watchlist" className="hover:text-purple-600 transition flex items-center gap-1.5">
-            <span>❤️ Watchlist</span>
+            <span>Watchlist</span>
             {watchlist.length > 0 && (
               <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
                 {watchlist.length}
               </span>
             )}
           </Link>
+          <Link href="/orders" className="hover:text-purple-600 transition">
+  My Orders
+</Link>
+
+          
+          <Link href="/cart" className="hover:text-purple-600 transition flex items-center gap-1.5">
+            <span>Cart</span>
+            {cartCount > 0 && (
+              <span className="bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                {cartCount}
+              </span>
+            )}
+          </Link>
+
           <Link href="/seller/dashboard" className="hover:text-purple-600 transition">
             Seller Dashboard
           </Link>
@@ -48,6 +64,9 @@ export default function Navbar() {
               >
                 Logout
               </button>
+              <Link href="/admin" className="hover:text-purple-600 transition flex items-center gap-1">
+   Admin
+</Link>
             </div>
           ) : (
             <div className="flex items-center gap-2">

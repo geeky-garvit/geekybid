@@ -1,71 +1,81 @@
-// app/api/auctions/route.ts
 import { NextResponse } from 'next/server';
 import { getAuctions } from '@/lib/store';
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
+  try {
+    const { searchParams } = new URL(request.url);
 
-  const category = searchParams.get('category') || undefined;
-  const status = searchParams.get('status') || undefined;
-  const search = searchParams.get('search') || undefined;
-  const minPrice = searchParams.get('minPrice') ? parseFloat(searchParams.get('minPrice')!) : undefined;
-  const maxPrice = searchParams.get('maxPrice') ? parseFloat(searchParams.get('maxPrice')!) : undefined;
-  const endingWithin = searchParams.get('endingWithin') ? parseInt(searchParams.get('endingWithin')!) : undefined;
-  const sortBy = searchParams.get('sortBy') || 'endingSoon';
-  
-  const cursor = searchParams.get('cursor') || undefined;
-  const limit = parseInt(searchParams.get('limit') || '8');
+    const category = searchParams.get('category') || undefined;
+    const status = searchParams.get('status') || undefined;
+    const search = searchParams.get('search') || undefined;
 
-  // Fetch filtered list from store
-  let items = getAuctions({ category, status, search });
+    const rawMinPrice = searchParams.get('minPrice');
+    const minPrice = rawMinPrice ? parseFloat(rawMinPrice) : undefined;
 
-  // Apply additional filters
-  if (minPrice !== undefined) {
-    items = items.filter((a) => a.currentHighestBid >= minPrice);
+    const rawMaxPrice = searchParams.get('maxPrice');
+    const maxPrice = rawMaxPrice ? parseFloat(rawMaxPrice) : undefined;
+
+    const rawEndingWithin = searchParams.get('endingWithin');
+    const endingWithin = rawEndingWithin ? parseInt(rawEndingWithin, 10) : undefined;
+
+    const sortBy = searchParams.get('sortBy') || 'endingSoon';
+    const cursor = searchParams.get('cursor') || undefined;
+
+    const rawLimit = searchParams.get('limit');
+    const limit = rawLimit ? parseInt(rawLimit, 10) : 8;
+
+    let items = getAuctions({ category, status, search });
+
+    if (minPrice !== undefined && !isNaN(minPrice)) {
+      items = items.filter((a) => a.currentHighestBid >= minPrice);
+    }
+    if (maxPrice !== undefined && !isNaN(maxPrice)) {
+      items = items.filter((a) => a.currentHighestBid <= maxPrice);
+    }
+    if (endingWithin !== undefined && !isNaN(endingWithin)) {
+      const cutoffTime = Date.now() + endingWithin * 3600 * 1000;
+      items = items.filter((a) => new Date(a.endTime).getTime() <= cutoffTime);
+    }
+
+    items.sort((a, b) => {
+      if (sortBy === 'endingSoon') {
+        return new Date(a.endTime).getTime() - new Date(b.endTime).getTime();
+      }
+      if (sortBy === 'priceAsc') {
+        return a.currentHighestBid - b.currentHighestBid;
+      }
+      if (sortBy === 'priceDesc') {
+        return b.currentHighestBid - a.currentHighestBid;
+      }
+      if (sortBy === 'mostBids') {
+        return b.bidsCount - a.bidsCount;
+      }
+      return 0;
+    });
+
+    let startIndex = 0;
+    if (cursor) {
+      const foundIndex = items.findIndex((i) => i.id === cursor);
+      if (foundIndex !== -1) {
+        startIndex = foundIndex + 1;
+      }
+    }
+
+    const paginatedItems = items.slice(startIndex, startIndex + limit);
+    const nextCursor =
+      paginatedItems.length === limit && startIndex + limit < items.length
+        ? paginatedItems[paginatedItems.length - 1].id
+        : null;
+
+    return NextResponse.json({
+      items: paginatedItems,
+      nextCursor,
+      total: items.length,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal Server Error' },
+      { status: 500 }
+    );
   }
-  if (maxPrice !== undefined) {
-    items = items.filter((a) => a.currentHighestBid <= maxPrice);
-  }
-  if (endingWithin !== undefined) {
-    const cutoffTime = new Date(Date.now() + endingWithin * 3600 * 1000).getTime();
-    items = items.filter((a) => new Date(a.endTime).getTime() <= cutoffTime);
-  }
-
-  // Apply sorting
-  items.sort((a, b) => {
-    if (sortBy === 'endingSoon') {
-      return new Date(a.endTime).getTime() - new Date(b.endTime).getTime();
-    }
-    if (sortBy === 'priceAsc') {
-      return a.currentHighestBid - b.currentHighestBid;
-    }
-    if (sortBy === 'priceDesc') {
-      return b.currentHighestBid - a.currentHighestBid;
-    }
-    if (sortBy === 'mostBids') {
-      return b.bidsCount - a.bidsCount;
-    }
-    return 0;
-  });
-
-  // Apply Cursor-based slicing
-  let startIndex = 0;
-  if (cursor) {
-    const foundIndex = items.findIndex((i) => i.id === cursor);
-    if (foundIndex !== -1) {
-      startIndex = foundIndex + 1;
-    }
-  }
-
-  const paginatedItems = items.slice(startIndex, startIndex + limit);
-  const nextCursor =
-    paginatedItems.length === limit && startIndex + limit < items.length
-      ? paginatedItems[paginatedItems.length - 1].id
-      : null;
-
-  return NextResponse.json({
-    items: paginatedItems,
-    nextCursor,
-    total: items.length,
-  });
 }

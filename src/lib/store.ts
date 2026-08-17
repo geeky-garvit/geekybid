@@ -1,4 +1,3 @@
-// src/lib/store.ts
 import { faker } from '@faker-js/faker';
 
 export interface User {
@@ -56,6 +55,25 @@ interface GlobalStore {
   isInitialized: boolean;
 }
 
+interface FilterOptions {
+  category?: string;
+  status?: string;
+  search?: string;
+}
+
+interface CreateAuctionPayload {
+  title: string;
+  description: string;
+  category: string;
+  startingPrice: number;
+  minIncrement: number;
+  images: string[];
+  endTime: string;
+  sellerId: string;
+  sellerName: string;
+  sellerAvatar: string;
+}
+
 const CATEGORIES = [
   'electronics',
   'photography',
@@ -105,7 +123,6 @@ const INITIAL_STORE: GlobalStore = {
   isInitialized: false,
 };
 
-// Bind store to globalThis for Next.js HMR preservation
 const globalForStore = globalThis as unknown as {
   store: GlobalStore | undefined;
 };
@@ -116,17 +133,15 @@ if (process.env.NODE_ENV !== 'production') {
   globalForStore.store = store;
 }
 
-// Helper: DiceBear Avatar Generator
+// Helper Utilities
 export function getAvatarUrl(seed: string): string {
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
 }
 
-// Helper: Picsum Image Generator
 export function getItemImageUrl(seedId: string, index: number = 1): string {
   return `https://picsum.photos/seed/${encodeURIComponent(seedId)}-${index}/600/600`;
 }
 
-// Helper: Category Normalizer
 function normalizeCategory(category: string): string {
   const cat = category.toLowerCase();
   if (cat.includes('laptop') || cat.includes('phone') || cat.includes('tablet')) return 'electronics';
@@ -138,8 +153,11 @@ function normalizeCategory(category: string): string {
   return 'general';
 }
 
-// Helper: Simulated Bid Generator
-function generateBidHistory(startingPrice: number, bidsCount: number, endTimeStr: string): { history: Bid[]; currentHighestBid: number } {
+function generateBidHistory(
+  startingPrice: number,
+  bidsCount: number,
+  endTimeStr: string
+): { history: Bid[]; currentHighestBid: number } {
   const history: Bid[] = [];
   let currentBid = startingPrice;
   const endTime = new Date(endTimeStr).getTime();
@@ -166,57 +184,69 @@ function generateBidHistory(startingPrice: number, bidsCount: number, endTimeStr
   return { history, currentHighestBid: currentBid };
 }
 
-/**
- * Seeds dataset combining DummyJSON (~200 items) + Faker.js (~300 items)
- */
-export async function initializeStore() {
+// Profile Dashboard Queries
+export function getAuctionsBySeller(sellerId: string): Auction[] {
+  return store.auctions.filter((a) => a.sellerId === sellerId);
+}
+
+export function getBidsByUser(userId: string): { auction: Auction; userBids: Bid[] }[] {
+  return store.auctions
+    .filter((a) => a.history.some((b) => b.bidderId === userId))
+    .map((a) => ({
+      auction: a,
+      userBids: a.history.filter((b) => b.bidderId === userId),
+    }));
+}
+
+// Store Initialization Logic
+export async function initializeStore(): Promise<void> {
   if (store.isInitialized && store.auctions.length > 0) return;
+
+  // Preserve auctions created before initialization call
+  const userCreatedAuctions = store.auctions.filter((a) => a.id.startsWith('auc-'));
 
   const dummyAuctions: Auction[] = [];
 
-  // 1. Fetch DummyJSON items
   try {
     const res = await fetch('https://dummyjson.com/products?limit=0');
     if (res.ok) {
       const data = await res.json();
-      data.products.forEach((p: { id: number; title: string; description: string; price: number; category: string; images: string[] }) => {
-        const bidsCount = faker.number.int({ min: 1, max: 25 });
-        const isLive = faker.datatype.boolean({ probability: 0.85 });
-        const endTime = isLive
-          ? faker.date.soon({ days: 5 }).toISOString()
-          : faker.date.recent({ days: 10 }).toISOString();
+      data.products.forEach(
+        (p: { id: number; title: string; description: string; price: number; category: string }) => {
+          const bidsCount = faker.number.int({ min: 1, max: 25 });
+          const isLive = faker.datatype.boolean({ probability: 0.85 });
+          const endTime = isLive
+            ? faker.date.soon({ days: 5 }).toISOString()
+            : faker.date.recent({ days: 10 }).toISOString();
 
-        const startingPrice = Math.max(10, Math.round(p.price * 0.4));
-        const { history, currentHighestBid } = generateBidHistory(startingPrice, bidsCount, endTime);
-        const sellerName = faker.person.fullName();
+          const startingPrice = Math.max(10, Math.round(p.price * 0.4));
+          const { history, currentHighestBid } = generateBidHistory(startingPrice, bidsCount, endTime);
+          const sellerName = faker.person.fullName();
 
-        dummyAuctions.push({
-          id: `dummy-${p.id}`,
-          title: p.title,
-          description: p.description,
-          category: normalizeCategory(p.category),
-          startingPrice,
-          currentHighestBid,
-          minIncrement: 5,
-          bidsCount,
-          images: [
-            getItemImageUrl(`dummy-${p.id}`, 1),
-            getItemImageUrl(`dummy-${p.id}`, 2),
-          ],
-          endTime,
-          status: isLive ? 'live' : 'ended',
-          sellerId: `usr-dummy-${p.id}`,
-          sellerName,
-          sellerAvatar: getAvatarUrl(sellerName),
-          history,
-        });
-      });
+          dummyAuctions.push({
+            id: `dummy-${p.id}`,
+            title: p.title,
+            description: p.description,
+            category: normalizeCategory(p.category),
+            startingPrice,
+            currentHighestBid,
+            minIncrement: 5,
+            bidsCount,
+            images: [getItemImageUrl(`dummy-${p.id}`, 1), getItemImageUrl(`dummy-${p.id}`, 2)],
+            endTime,
+            status: isLive ? 'live' : 'ended',
+            sellerId: `usr-dummy-${p.id}`,
+            sellerName,
+            sellerAvatar: getAvatarUrl(sellerName),
+            history,
+          });
+        }
+      );
     }
   } catch (err) {
-    console.warn('Failed fetching DummyJSON products, proceeding with Faker-only fallback:', err);
+    console.warn('Failed fetching external inventory, initializing fallback dataset:', err);
   }
 
-  // 2. Generate Faker.js items (~300 items)
   const fakerAuctions: Auction[] = [];
   for (let i = 1; i <= 300; i++) {
     const seedId = `faker-${i}`;
@@ -241,10 +271,7 @@ export async function initializeStore() {
       currentHighestBid,
       minIncrement: 5,
       bidsCount,
-      images: [
-        getItemImageUrl(seedId, 1),
-        getItemImageUrl(seedId, 2),
-      ],
+      images: [getItemImageUrl(seedId, 1), getItemImageUrl(seedId, 2)],
       endTime,
       status: isLive ? 'live' : 'ended',
       sellerId: `usr-faker-${i}`,
@@ -254,12 +281,12 @@ export async function initializeStore() {
     });
   }
 
-  store.auctions = [...dummyAuctions, ...fakerAuctions];
+  // Combine user creations on top followed by generated items
+  store.auctions = [...userCreatedAuctions, ...dummyAuctions, ...fakerAuctions];
   store.isInitialized = true;
 }
 
-// Store Helper Methods
-export function getAuctions(filter?: { category?: string; status?: string; search?: string }) {
+export function getAuctions(filter?: FilterOptions): Auction[] {
   let list = [...store.auctions];
 
   if (filter?.category && filter.category !== 'all') {
@@ -269,8 +296,10 @@ export function getAuctions(filter?: { category?: string; status?: string; searc
     list = list.filter((a) => a.status === filter.status);
   }
   if (filter?.search) {
-    const q = filter.search.toLowerCase();
-    list = list.filter((a) => a.title.toLowerCase().includes(q) || a.description.toLowerCase().includes(q));
+    const query = filter.search.toLowerCase();
+    list = list.filter(
+      (a) => a.title.toLowerCase().includes(query) || a.description.toLowerCase().includes(query)
+    );
   }
 
   return list;
@@ -286,16 +315,13 @@ export function getAuctionById(id: string): Auction | undefined {
     auction = {
       id: cleanId,
       title: `Auction Item #${numId}`,
-      description: 'Auto-generated auction item sourced dynamically.',
+      description: 'Dynamic auction listing initialized on demand.',
       category: 'general',
       startingPrice: 40,
       currentHighestBid: 40,
       minIncrement: 5,
       bidsCount: 0,
-      images: [
-        getItemImageUrl(cleanId, 1),
-        getItemImageUrl(cleanId, 2),
-      ],
+      images: [getItemImageUrl(cleanId, 1), getItemImageUrl(cleanId, 2)],
       endTime: new Date(Date.now() + 86400000).toISOString(),
       status: 'live',
       sellerId: `seller-${numId}`,
@@ -309,7 +335,12 @@ export function getAuctionById(id: string): Auction | undefined {
   return auction;
 }
 
-export function placeBid(auctionId: string, amount: number, userId: string, userName: string) {
+export function placeBid(
+  auctionId: string,
+  amount: number,
+  userId: string,
+  userName: string
+): Auction {
   const auction = getAuctionById(auctionId);
   if (!auction) throw new Error('Auction not found');
   if (auction.status !== 'live') throw new Error('Auction is not live');
@@ -321,18 +352,16 @@ export function placeBid(auctionId: string, amount: number, userId: string, user
     throw new Error(`Bid must be at least $${minRequired.toFixed(2)}`);
   }
 
-  // Anti-sniping rule: extend by 2 minutes if placed in final 2 minutes
   const now = new Date();
   const timeRemainingMs = new Date(auction.endTime).getTime() - now.getTime();
   if (timeRemainingMs <= 2 * 60 * 1000) {
     auction.endTime = new Date(new Date(auction.endTime).getTime() + 2 * 60 * 1000).toISOString();
   }
 
-  // Record Bid
   auction.currentHighestBid = amount;
   auction.bidsCount += 1;
   auction.history.unshift({
-    id: 'bid-' + Date.now(),
+    id: `bid-${Date.now()}`,
     bidderId: userId,
     bidderName: userName,
     amount,
@@ -342,20 +371,27 @@ export function placeBid(auctionId: string, amount: number, userId: string, user
   return auction;
 }
 
-export function createAuction(data: Omit<Auction, 'id' | 'currentHighestBid' | 'bidsCount' | 'status' | 'history'>) {
+export function createAuction(data: CreateAuctionPayload): Auction {
   const newAuction: Auction = {
     ...data,
-    id: 'auc-' + Date.now(),
+    id: `auc-${Date.now()}`,
     currentHighestBid: data.startingPrice,
     bidsCount: 0,
     status: 'live',
     history: [],
   };
+
   store.auctions.unshift(newAuction);
+  store.isInitialized = true; // Lock initialization so background jobs keep this auction
+
   return newAuction;
 }
 
-export function closeExpiredAuctions() {
+export function closeExpiredAuctions(): Array<{
+  auctionId: string;
+  winner: string | null;
+  amount: number;
+}> {
   const now = new Date();
   const closed = [];
 
@@ -366,7 +402,7 @@ export function closeExpiredAuctions() {
 
       if (winner) {
         const order: Order = {
-          id: 'ord-' + Date.now(),
+          id: `ord-${Date.now()}`,
           auctionId: auction.id,
           winnerId: winner.bidderId,
           amount: winner.amount,

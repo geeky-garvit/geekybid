@@ -44,7 +44,7 @@ export default function BidForm({
     startTransition(async () => {
       const res = await placeBidAction(auctionId, amount);
 
-      if (res.success && res.highestBid && res.bidsCount) {
+      if (res.success && res.highestBid !== undefined && res.bidsCount !== undefined) {
         // Direct local state sync
         setHighestBid(res.highestBid);
         setBidsCount(res.bidsCount);
@@ -62,8 +62,9 @@ export default function BidForm({
 
   return (
     <div className="space-y-6">
+      {/* Bid Input Box */}
       <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4">
-        <div className="flex justify-between items-center border-b pb-4">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-4">
           <div>
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
               Current Highest Bid
@@ -91,7 +92,7 @@ export default function BidForm({
               min={minAllowed}
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
-              className="w-full p-3 border rounded-xl font-bold focus:ring-2 focus:ring-purple-600 outline-none"
+              className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none transition"
               required
             />
           </div>
@@ -99,7 +100,7 @@ export default function BidForm({
           <button
             type="submit"
             disabled={isPending}
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition disabled:opacity-50"
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition shadow-sm shadow-purple-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isPending ? 'Placing Bid...' : 'Place Bid'}
           </button>
@@ -108,7 +109,9 @@ export default function BidForm({
         {status && (
           <div
             className={`p-3 rounded-xl text-xs font-bold ${
-              status.success ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+              status.success
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                : 'bg-rose-50 text-rose-700 border border-rose-200'
             }`}
           >
             {status.text}
@@ -118,17 +121,22 @@ export default function BidForm({
 
       {/* Masked Bid History */}
       <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl">
-        <h3 className="text-sm font-bold text-slate-800 mb-3">Bid History ({history.length})</h3>
+        <h3 className="text-sm font-bold text-slate-800 mb-3">
+          Bid History ({history.length})
+        </h3>
         {history.length === 0 ? (
           <p className="text-xs text-slate-500 italic">No bids placed yet. Be the first!</p>
         ) : (
           <div className="space-y-2">
             {history.map((bid) => (
-              <div key={bid.id} className="flex justify-between items-center text-xs py-1 border-b border-slate-200/60">
+              <div
+                key={bid.id}
+                className="flex justify-between items-center text-xs py-1.5 border-b border-slate-200/60 last:border-b-0"
+              >
                 <span className="font-semibold text-slate-700">{maskName(bid.bidderName)}</span>
                 <span className="font-bold text-purple-950">${bid.amount.toFixed(2)}</span>
                 <span className="text-[10px] text-slate-400">
-                  {new Date(bid.time).toLocaleTimeString()}
+                  {new Date(bid.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
             ))}

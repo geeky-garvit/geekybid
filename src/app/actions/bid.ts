@@ -3,6 +3,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { placeBid, store, Bid } from '@/lib/store';
+import { syncAndSimulateAuctions } from '@/lib/auction-engine';
 
 export interface PlaceBidResponse {
   success: boolean;
@@ -17,16 +18,18 @@ export async function placeBidAction(
   amount: number
 ): Promise<PlaceBidResponse> {
   try {
+    // Keep global state fresh and resolve expired winners before placing a bid
+    await syncAndSimulateAuctions();
+
     const currentUser = store.currentUser;
 
     if (!currentUser) {
       return {
         success: false,
-        message: 'You must be logged in to place a bid.',
+        message: 'Authentication required. Please sign in to place a bid.',
       };
     }
 
-    // Execute bid logic inside global store (validates min bid, expiry, seller restrictions, and anti-sniping)
     const updatedAuction = placeBid(
       auctionId,
       amount,
@@ -34,14 +37,14 @@ export async function placeBidAction(
       currentUser.name
     );
 
-    // Revalidate relevant Next.js routes to refresh server components
+    // Revalidate paths for instant client UI synchronization
     revalidatePath(`/auction/${auctionId}`);
     revalidatePath('/auctions');
     revalidatePath('/profile');
 
     return {
       success: true,
-      message: `🎉 Bid placed successfully! New highest bid: $${updatedAuction.currentHighestBid.toFixed(2)}`,
+      message: `Bid placed successfully. New highest bid: $${updatedAuction.currentHighestBid.toFixed(2)}`,
       highestBid: updatedAuction.currentHighestBid,
       bidsCount: updatedAuction.bidsCount,
       history: updatedAuction.history,

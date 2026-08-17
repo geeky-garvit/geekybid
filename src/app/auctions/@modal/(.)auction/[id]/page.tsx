@@ -1,9 +1,10 @@
-// app/auctions/@modal/(.)auction/[id]/page.tsx
+import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { getAuctionById } from '@/lib/store';
 import Modal from '@/app/components/ui/Modal';
 import BidForm from '@/app/components/auction/BidForm';
+import SellerBadge from './components/SellerBadge';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,9 @@ export default async function QuickViewAuctionModal({
       <Modal>
         <div className="p-8 text-center space-y-2">
           <h3 className="text-lg font-bold text-rose-600">Auction Listing Not Found</h3>
-          <p className="text-xs text-slate-500">This auction may have been removed or does not exist.</p>
+          <p className="text-xs text-slate-500">
+            This auction may have been removed or does not exist.
+          </p>
         </div>
       </Modal>
     );
@@ -31,13 +34,14 @@ export default async function QuickViewAuctionModal({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-start pt-2">
         {/* Left: Image & Quick Details */}
         <div className="space-y-4">
-          <div className="relative aspect-square w-full rounded-2xl overflow-hidden border bg-slate-100">
+          <div className="relative aspect-square w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-100">
             <Image
               src={auction.images[0]}
               alt={auction.title}
               fill
               className="object-cover"
-              sizes="50vw"
+              priority
+              sizes="(max-width: 640px) 100vw, 50vw"
             />
             <div className="absolute top-3 left-3 bg-purple-900/90 text-white font-bold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-sm">
               Quick View
@@ -52,15 +56,7 @@ export default async function QuickViewAuctionModal({
             <p className="text-xs text-slate-500 line-clamp-3 mt-1">{auction.description}</p>
           </div>
 
-          <div className="flex items-center gap-3 pt-2 border-t">
-            <div className="relative w-8 h-8 rounded-full overflow-hidden border">
-              <Image src={auction.sellerAvatar} alt={auction.sellerName} fill />
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-400 block font-semibold">Listed by</span>
-              <span className="text-xs font-bold text-slate-800">{auction.sellerName}</span>
-            </div>
-          </div>
+          <SellerBadge name={auction.sellerName} avatar={auction.sellerAvatar} />
         </div>
 
         {/* Right: Bidding Module */}
