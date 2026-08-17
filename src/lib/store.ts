@@ -44,6 +44,7 @@ export interface Order {
   winnerId: string;
   amount: number;
   isPaid: boolean;
+  createdAt: string;
 }
 
 interface GlobalStore {
@@ -133,7 +134,14 @@ if (process.env.NODE_ENV !== 'production') {
   globalForStore.store = store;
 }
 
-// Helper Utilities
+// Helpers
+export function saveAuctions(updatedAuctions: Auction[]): void {
+  store.auctions = updatedAuctions;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('geekybid_auctions', JSON.stringify(store.auctions));
+  }
+}
+
 export function getAvatarUrl(seed: string): string {
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
 }
@@ -144,18 +152,18 @@ export function getItemImageUrl(seedId: string, index: number = 1): string {
 
 function normalizeCategory(category: string): string {
   const cat = category.toLowerCase();
-  if (cat.includes('laptop') || cat.includes('phone') || cat.includes('tablet')) return 'electronics';
+  if (cat.includes('laptop') || cat.includes('phone') || cat.includes('tablet') || cat.includes('smartphones')) return 'electronics';
   if (cat.includes('camera') || cat.includes('photo')) return 'photography';
-  if (cat.includes('watch') || cat.includes('jewel')) return 'jewelry';
-  if (cat.includes('cloth') || cat.includes('shoe') || cat.includes('bag')) return 'fashion';
-  if (cat.includes('art') || cat.includes('decor')) return 'art';
+  if (cat.includes('watch') || cat.includes('jewel') || cat.includes('womens-watches') || cat.includes('mens-watches')) return 'jewelry';
+  if (cat.includes('cloth') || cat.includes('shoe') || cat.includes('bag') || cat.includes('tops') || cat.includes('dresses')) return 'fashion';
+  if (cat.includes('art') || cat.includes('decor') || cat.includes('home-decoration')) return 'art';
   if (cat.includes('antique') || cat.includes('coin')) return 'collectibles';
   return 'general';
 }
 
 function generateBidHistory(
   startingPrice: number,
-  bidsCount: number,
+  targetBidsCount: number,
   endTimeStr: string
 ): { history: Bid[]; currentHighestBid: number } {
   const history: Bid[] = [];
@@ -163,19 +171,23 @@ function generateBidHistory(
   const endTime = new Date(endTimeStr).getTime();
   const startTime = endTime - 7 * 24 * 60 * 60 * 1000;
 
-  for (let i = 0; i < bidsCount; i++) {
-    const increment = faker.number.float({ min: 5, max: 45, fractionDigits: 2 });
+  for (let i = 0; i < targetBidsCount; i++) {
+    const increment = faker.number.float({ min: 2, max: 25, fractionDigits: 2 });
     currentBid = parseFloat((currentBid + increment).toFixed(2));
 
-    const bidderName = faker.person.fullName();
+    const bidder = store.users[i % store.users.length] || {
+      id: `usr-${faker.string.alphanumeric(6)}`,
+      name: faker.person.fullName(),
+    };
+
     const bidTime = new Date(
-      startTime + (i / Math.max(bidsCount, 1)) * (endTime - startTime)
+      startTime + ((i + 1) / Math.max(targetBidsCount, 1)) * (endTime - startTime)
     ).toISOString();
 
     history.unshift({
       id: `bid-${faker.string.alphanumeric(8)}`,
-      bidderId: `usr-${faker.string.alphanumeric(6)}`,
-      bidderName,
+      bidderId: bidder.id,
+      bidderName: bidder.name,
       amount: currentBid,
       time: bidTime,
     });
@@ -184,27 +196,11 @@ function generateBidHistory(
   return { history, currentHighestBid: currentBid };
 }
 
-// Profile Dashboard Queries
-export function getAuctionsBySeller(sellerId: string): Auction[] {
-  return store.auctions.filter((a) => a.sellerId === sellerId);
-}
-
-export function getBidsByUser(userId: string): { auction: Auction; userBids: Bid[] }[] {
-  return store.auctions
-    .filter((a) => a.history.some((b) => b.bidderId === userId))
-    .map((a) => ({
-      auction: a,
-      userBids: a.history.filter((b) => b.bidderId === userId),
-    }));
-}
-
-// Store Initialization Logic
+// Global Store Initializer
 export async function initializeStore(): Promise<void> {
   if (store.isInitialized && store.auctions.length > 0) return;
 
-  // Preserve auctions created before initialization call
   const userCreatedAuctions = store.auctions.filter((a) => a.id.startsWith('auc-'));
-
   const dummyAuctions: Auction[] = [];
 
   try {
@@ -212,16 +208,20 @@ export async function initializeStore(): Promise<void> {
     if (res.ok) {
       const data = await res.json();
       data.products.forEach(
-        (p: { id: number; title: string; description: string; price: number; category: string }) => {
-          const bidsCount = faker.number.int({ min: 1, max: 25 });
+        (p: { id: number; title: string; description: string; price: number; category: string; images?: string[]; thumbnail?: string }) => {
+          const targetBids = faker.number.int({ min: 0, max: 18 });
           const isLive = faker.datatype.boolean({ probability: 0.85 });
           const endTime = isLive
             ? faker.date.soon({ days: 5 }).toISOString()
             : faker.date.recent({ days: 10 }).toISOString();
 
           const startingPrice = Math.max(10, Math.round(p.price * 0.4));
-          const { history, currentHighestBid } = generateBidHistory(startingPrice, bidsCount, endTime);
+          const { history, currentHighestBid } = generateBidHistory(startingPrice, targetBids, endTime);
           const sellerName = faker.person.fullName();
+
+          const productImages = p.images && p.images.length > 0
+            ? p.images
+            : [p.thumbnail || getItemImageUrl(`dummy-${p.id}`, 1), getItemImageUrl(`dummy-${p.id}`, 2)];
 
           dummyAuctions.push({
             id: `dummy-${p.id}`,
@@ -231,8 +231,8 @@ export async function initializeStore(): Promise<void> {
             startingPrice,
             currentHighestBid,
             minIncrement: 5,
-            bidsCount,
-            images: [getItemImageUrl(`dummy-${p.id}`, 1), getItemImageUrl(`dummy-${p.id}`, 2)],
+            bidsCount: history.length,
+            images: productImages,
             endTime,
             status: isLive ? 'live' : 'ended',
             sellerId: `usr-dummy-${p.id}`,
@@ -251,7 +251,7 @@ export async function initializeStore(): Promise<void> {
   for (let i = 1; i <= 300; i++) {
     const seedId = `faker-${i}`;
     const category = faker.helpers.arrayElement(CATEGORIES);
-    const bidsCount = faker.number.int({ min: 0, max: 30 });
+    const targetBids = faker.number.int({ min: 0, max: 22 });
     const startingPrice = parseFloat(faker.commerce.price({ min: 15, max: 600, dec: 2 }));
 
     const isLive = faker.datatype.boolean({ probability: 0.8 });
@@ -259,7 +259,7 @@ export async function initializeStore(): Promise<void> {
       ? faker.date.soon({ days: 7 }).toISOString()
       : faker.date.recent({ days: 14 }).toISOString();
 
-    const { history, currentHighestBid } = generateBidHistory(startingPrice, bidsCount, endTime);
+    const { history, currentHighestBid } = generateBidHistory(startingPrice, targetBids, endTime);
     const sellerName = faker.person.fullName();
 
     fakerAuctions.push({
@@ -270,7 +270,7 @@ export async function initializeStore(): Promise<void> {
       startingPrice,
       currentHighestBid,
       minIncrement: 5,
-      bidsCount,
+      bidsCount: history.length,
       images: [getItemImageUrl(seedId, 1), getItemImageUrl(seedId, 2)],
       endTime,
       status: isLive ? 'live' : 'ended',
@@ -281,13 +281,17 @@ export async function initializeStore(): Promise<void> {
     });
   }
 
-  // Combine user creations on top followed by generated items
   store.auctions = [...userCreatedAuctions, ...dummyAuctions, ...fakerAuctions];
   store.isInitialized = true;
 }
 
+// Data Fetchers & Real-Time Synchronizers
 export function getAuctions(filter?: FilterOptions): Auction[] {
-  let list = [...store.auctions];
+  closeExpiredAuctions();
+  let list = store.auctions.map((a) => ({
+    ...a,
+    bidsCount: a.history ? a.history.length : a.bidsCount,
+  }));
 
   if (filter?.category && filter.category !== 'all') {
     list = list.filter((a) => a.category.toLowerCase() === filter.category?.toLowerCase());
@@ -306,33 +310,62 @@ export function getAuctions(filter?: FilterOptions): Auction[] {
 }
 
 export function getAuctionById(id: string): Auction | undefined {
-  const cleanId = id.trim();
-  let auction = store.auctions.find((a) => a.id === cleanId);
+  closeExpiredAuctions();
+  const cleanId = decodeURIComponent(id).trim();
 
-  if (!auction && (cleanId.startsWith('dummy-') || cleanId.startsWith('faker-') || /^\d+$/.test(cleanId))) {
-    const numId = cleanId.replace(/^(dummy-|faker-)/, '');
-    const sellerName = `Seller #${numId}`;
-    auction = {
-      id: cleanId,
-      title: `Auction Item #${numId}`,
-      description: 'Dynamic auction listing initialized on demand.',
-      category: 'general',
-      startingPrice: 40,
-      currentHighestBid: 40,
-      minIncrement: 5,
-      bidsCount: 0,
-      images: [getItemImageUrl(cleanId, 1), getItemImageUrl(cleanId, 2)],
-      endTime: new Date(Date.now() + 86400000).toISOString(),
-      status: 'live',
-      sellerId: `seller-${numId}`,
-      sellerName,
-      sellerAvatar: getAvatarUrl(sellerName),
-      history: [],
-    };
-    store.auctions.push(auction);
+  let auction = store.auctions.find(
+    (a) =>
+      a.id === cleanId ||
+      a.id === `faker-${cleanId}` ||
+      a.id === `dummy-${cleanId}` ||
+      a.id.replace(/^(dummy-|faker-)/, '') === cleanId.replace(/^(dummy-|faker-)/, '')
+  );
+
+  if (auction) {
+    auction.bidsCount = auction.history ? auction.history.length : auction.bidsCount;
+    if (new Date(auction.endTime) <= new Date() && auction.status === 'live') {
+      auction.status = 'ended';
+    }
   }
 
   return auction;
+}
+
+export function toggleWatchlist(userId: string, auctionId: string): boolean {
+  const index = store.watchlists.findIndex(
+    (w) => w.userId === userId && w.auctionId === auctionId
+  );
+  if (index >= 0) {
+    store.watchlists.splice(index, 1);
+    return false;
+  } else {
+    store.watchlists.push({ userId, auctionId });
+    return true;
+  }
+}
+
+export function getWatchlistByUser(userId: string): Auction[] {
+  const auctionIds = store.watchlists
+    .filter((w) => w.userId === userId)
+    .map((w) => w.auctionId);
+  return store.auctions.filter((a) => auctionIds.includes(a.id));
+}
+
+export function getOrdersByUser(userId: string): Order[] {
+  return store.orders.filter((o) => o.winnerId === userId);
+}
+
+export function getAuctionsBySeller(sellerId: string): Auction[] {
+  return store.auctions.filter((a) => a.sellerId === sellerId);
+}
+
+export function getBidsByUser(userId: string): { auction: Auction; userBids: Bid[] }[] {
+  return store.auctions
+    .filter((a) => a.history.some((b) => b.bidderId === userId))
+    .map((a) => ({
+      auction: a,
+      userBids: a.history.filter((b) => b.bidderId === userId),
+    }));
 }
 
 export function placeBid(
@@ -344,7 +377,10 @@ export function placeBid(
   const auction = getAuctionById(auctionId);
   if (!auction) throw new Error('Auction not found');
   if (auction.status !== 'live') throw new Error('Auction is not live');
-  if (new Date() > new Date(auction.endTime)) throw new Error('Auction has expired');
+  if (new Date() > new Date(auction.endTime)) {
+    auction.status = 'ended';
+    throw new Error('Auction has expired');
+  }
   if (auction.sellerId === userId) throw new Error('Sellers cannot bid on their own auctions');
 
   const minRequired = auction.currentHighestBid + auction.minIncrement;
@@ -359,7 +395,6 @@ export function placeBid(
   }
 
   auction.currentHighestBid = amount;
-  auction.bidsCount += 1;
   auction.history.unshift({
     id: `bid-${Date.now()}`,
     bidderId: userId,
@@ -367,6 +402,7 @@ export function placeBid(
     amount,
     time: new Date().toISOString(),
   });
+  auction.bidsCount = auction.history.length;
 
   return auction;
 }
@@ -382,9 +418,21 @@ export function createAuction(data: CreateAuctionPayload): Auction {
   };
 
   store.auctions.unshift(newAuction);
-  store.isInitialized = true; // Lock initialization so background jobs keep this auction
-
+  store.isInitialized = true;
   return newAuction;
+}
+
+export function updateAuctionEndTime(auctionId: string, newEndTime: string): Auction | undefined {
+  const auctions = getAuctions();
+  const index = auctions.findIndex((a) => a.id === auctionId);
+
+  if (index !== -1) {
+    auctions[index].endTime = newEndTime;
+    saveAuctions(auctions);
+    return auctions[index];
+  }
+
+  return undefined;
 }
 
 export function closeExpiredAuctions(): Array<{
@@ -401,14 +449,18 @@ export function closeExpiredAuctions(): Array<{
       const winner = auction.history[0];
 
       if (winner) {
-        const order: Order = {
-          id: `ord-${Date.now()}`,
-          auctionId: auction.id,
-          winnerId: winner.bidderId,
-          amount: winner.amount,
-          isPaid: false,
-        };
-        store.orders.push(order);
+        const orderExists = store.orders.some((o) => o.auctionId === auction.id);
+        if (!orderExists) {
+          const order: Order = {
+            id: `ord-${Date.now()}-${Math.random()}`,
+            auctionId: auction.id,
+            winnerId: winner.bidderId,
+            amount: winner.amount,
+            isPaid: false,
+            createdAt: new Date().toISOString(),
+          };
+          store.orders.push(order);
+        }
         closed.push({ auctionId: auction.id, winner: winner.bidderName, amount: winner.amount });
       } else {
         closed.push({ auctionId: auction.id, winner: null, amount: 0 });

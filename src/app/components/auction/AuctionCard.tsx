@@ -19,7 +19,7 @@ export default function AuctionCard({ auction }: AuctionCardProps) {
 
   return (
     <Link
-      href={`/auction/${auction.id}`}
+      href={`/auction/${encodeURIComponent(auction.id)}`}
       className="group bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col h-full"
     >
       {/* Image Container */}

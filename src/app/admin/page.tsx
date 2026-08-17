@@ -5,6 +5,11 @@ import { store, initializeStore, Auction, Order } from '@/lib/store';
 import AdminMetrics from '../components/AdminMetrics';
 import AdminAuctionsTable from '../components/AdminAuctionsTable';
 import AdminOrdersTable from '../components/AdminOrdersTable';
+import {
+  adminCloseAuctionAction,
+  adminDeleteAuctionAction,
+  adminTogglePaymentStatusAction,
+} from '@/app/actions/auction';
 
 export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -22,27 +27,36 @@ export default function AdminDashboardPage() {
     loadAdminData();
   }, []);
 
-  const handleCloseAuction = useCallback((auctionId: string) => {
-    const updated = store.auctions.map((item) =>
-      item.id === auctionId ? { ...item, status: 'ended' as const } : item
-    );
-    store.auctions = updated;
-    setAuctions(updated);
+  const handleCloseAuction = useCallback(async (auctionId: string) => {
+    const res = await adminCloseAuctionAction(auctionId);
+    if (res.success) {
+      setAuctions((prev) =>
+        prev.map((item) => (item.id === auctionId ? { ...item, status: 'ended' } : item))
+      );
+    } else {
+      alert(res.error || 'Failed to close auction');
+    }
   }, []);
 
-  const handleDeleteAuction = useCallback((auctionId: string) => {
+  const handleDeleteAuction = useCallback(async (auctionId: string) => {
     if (!confirm('Are you sure you want to delete this auction listing?')) return;
-    const updated = store.auctions.filter((item) => item.id !== auctionId);
-    store.auctions = updated;
-    setAuctions(updated);
+    const res = await adminDeleteAuctionAction(auctionId);
+    if (res.success) {
+      setAuctions((prev) => prev.filter((item) => item.id !== auctionId));
+    } else {
+      alert(res.error || 'Failed to delete auction');
+    }
   }, []);
 
-  const handleTogglePaymentStatus = useCallback((orderId: string) => {
-    const updated = store.orders.map((order) =>
-      order.id === orderId ? { ...order, isPaid: !order.isPaid } : order
-    );
-    store.orders = updated;
-    setOrders(updated);
+  const handleTogglePaymentStatus = useCallback(async (orderId: string) => {
+    const res = await adminTogglePaymentStatusAction(orderId);
+    if (res.success) {
+      setOrders((prev) =>
+        prev.map((order) => (order.id === orderId ? { ...order, isPaid: !order.isPaid } : order))
+      );
+    } else {
+      alert(res.error || 'Failed to toggle order status');
+    }
   }, []);
 
   const totalRevenue = useMemo(

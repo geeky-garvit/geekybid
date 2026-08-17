@@ -1,4 +1,3 @@
-// src/app/seller/dashboard/page.tsx
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -13,22 +12,23 @@ interface ActivityItem {
   bidderName: string;
   amount: number;
   time: string;
+  timestamp: number;
   auctionId: string;
 }
 
 export default function SellerDashboardPage() {
-  const { user } = useAuth(); // Connect directly to logged-in user context
+  const { user } = useAuth();
   const [allAuctions, setAllAuctions] = useState<Auction[]>([]);
   const [activeTab, setActiveTab] = useState<'listings' | 'bids' | 'sold'>('listings');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Sync Store Data with API Polling
+  // Sync Store Data with API
   const syncDashboardData = useCallback(async () => {
     try {
       const res = await fetch('/api/auctions/sync', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        if (data.auctions) {
+        if (Array.isArray(data.auctions)) {
           setAllAuctions(data.auctions);
         }
       }
@@ -40,22 +40,48 @@ export default function SellerDashboardPage() {
   }, []);
 
   useEffect(() => {
-    syncDashboardData();
-    // Poll every 3 seconds for real-time bid updates
-    const interval = setInterval(syncDashboardData, 3000);
-    return () => clearInterval(interval);
+    let isMounted = true;
+    
+    const runSync = async () => {
+      if (isMounted) {
+        await syncDashboardData();
+      }
+    };
+
+    runSync();
+
+    // Poll every 5 seconds only when document is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        syncDashboardData();
+      }
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [syncDashboardData]);
 
   if (!user) {
     return (
-      <div className="max-w-4xl mx-auto py-16 px-4 text-center space-y-3">
+      <div className="max-w-4xl mx-auto py-16 px-4 text-center space-y-4">
+        <span className="text-3xl block">🔒</span>
         <h2 className="text-2xl font-black text-slate-900">Please Log In</h2>
-        <p className="text-slate-500 text-xs">Select a profile from the header to view your seller central dashboard.</p>
+        <p className="text-slate-500 text-xs">
+          Select a profile or sign in to access your seller central dashboard.
+        </p>
+        <Link
+          href="/login"
+          className="inline-block bg-purple-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl hover:bg-purple-700 transition"
+        >
+          Sign In
+        </Link>
       </div>
     );
   }
 
-  // Dynamic filter for ONLY the current logged-in seller's auctions
+  // Filter for current seller's listings
   const sellerAuctions = allAuctions.filter((a) => a.sellerId === user.id);
 
   const activeListings = sellerAuctions.filter((a) => a.status === 'live');
@@ -70,19 +96,26 @@ export default function SellerDashboardPage() {
       ? ((soldListings.length / sellerAuctions.length) * 100).toFixed(1)
       : '0.0';
 
-  // Extract real live bid history across this specific seller's listings
+  // Extract real live bid history across seller's listings safely
   const realRecentBids: ActivityItem[] = sellerAuctions
     .flatMap((auction) =>
-      (auction.history || []).map((bid: Bid) => ({
-        id: bid.id,
-        itemTitle: auction.title,
-        bidderName: bid.bidderName,
-        amount: bid.amount,
-        time: new Date(bid.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        auctionId: auction.id,
-      }))
+      (auction.history || []).map((bid: Bid) => {
+        const parsedDate = new Date(bid.time);
+        const isValidDate = !isNaN(parsedDate.getTime());
+        return {
+          id: bid.id,
+          itemTitle: auction.title,
+          bidderName: bid.bidderName,
+          amount: bid.amount,
+          time: isValidDate
+            ? parsedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : bid.time,
+          timestamp: isValidDate ? parsedDate.getTime() : 0,
+          auctionId: auction.id,
+        };
+      })
     )
-    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+    .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, 10);
 
   return (
@@ -155,6 +188,7 @@ export default function SellerDashboardPage() {
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="flex border-b border-slate-200 text-xs font-bold text-slate-500 bg-slate-50/50 px-6 overflow-x-auto">
           <button
+            type="button"
             onClick={() => setActiveTab('listings')}
             className={`py-4 px-4 border-b-2 transition whitespace-nowrap ${
               activeTab === 'listings'
@@ -165,6 +199,7 @@ export default function SellerDashboardPage() {
             Active Listings ({activeListings.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('bids')}
             className={`py-4 px-4 border-b-2 transition whitespace-nowrap ${
               activeTab === 'bids'
@@ -175,6 +210,7 @@ export default function SellerDashboardPage() {
             Live Bids Activity ({realRecentBids.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('sold')}
             className={`py-4 px-4 border-b-2 transition whitespace-nowrap ${
               activeTab === 'sold'
@@ -205,9 +241,10 @@ export default function SellerDashboardPage() {
                     <div className="flex items-center gap-4">
                       <div className="relative w-16 h-16 rounded-xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200">
                         <Image
-                          src={item.images?.[0] || 'https://picsum.photos/200'}
+                          src={item.images?.[0] || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'}
                           alt={item.title}
                           fill
+                          sizes="64px"
                           className="object-cover"
                         />
                       </div>
@@ -288,9 +325,10 @@ export default function SellerDashboardPage() {
                     <div className="flex items-center gap-4">
                       <div className="relative w-16 h-16 rounded-xl bg-slate-100 overflow-hidden shrink-0 border border-slate-200">
                         <Image
-                          src={item.images?.[0] || 'https://picsum.photos/200'}
+                          src={item.images?.[0] || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'}
                           alt={item.title}
                           fill
+                          sizes="64px"
                           className="object-cover"
                         />
                       </div>
@@ -307,7 +345,7 @@ export default function SellerDashboardPage() {
                     </div>
 
                     <Link
-                      href={`/checkout?auctionId=${item.id}`}
+                      href={`/checkout/winner?auctionId=${item.id}`}
                       className="text-xs font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 px-4 py-2 rounded-xl transition text-center"
                     >
                       View Winner Checkout

@@ -3,13 +3,18 @@
 import React, { useState, useEffect, use, useCallback } from 'react';
 import Link from 'next/link';
 import { getAuctionById, initializeStore, Auction } from '@/lib/store';
+import { placeBidAction } from '@/app/actions/bid';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import AuctionGallery from './components/AuctionGallery';
 import AuctionBiddingCard from './components/AuctionBiddingCard';
 import AuctionBidHistory, { Bid } from './components/AuctionBidHistory';
 
-export default function AuctionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function AuctionDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const { user, isWatchlisted, toggleWatchlist } = useAuth();
   const { addToCart } = useCart();
@@ -25,49 +30,68 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     isEnded: false,
   });
 
+  // 1. Helper to sync component state from central store
+  const syncStoreData = useCallback(() => {
+    const foundAuction = getAuctionById(id);
+    if (foundAuction) {
+      setAuction({ ...foundAuction });
+
+      if (foundAuction.history) {
+        const mappedBids: Bid[] = foundAuction.history.map((b) => ({
+          id: b.id,
+          bidderName: b.bidderName,
+          bidderAvatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(
+            b.bidderName
+          )}`,
+          amount: b.amount,
+          timestamp: new Date(b.time).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        }));
+        setBidsHistory(mappedBids);
+      }
+    }
+  }, [id]);
+
+  // 2. Initial load and background polling interval
   useEffect(() => {
     let isMounted = true;
 
     async function loadAuctionData() {
-      setLoading(true);
       await initializeStore();
-
       if (!isMounted) return;
-
-      const foundAuction = getAuctionById(id);
-      if (foundAuction) {
-        setAuction(foundAuction);
-
-        if (foundAuction.history && foundAuction.history.length > 0) {
-          const mappedBids: Bid[] = foundAuction.history.map((b) => ({
-            id: b.id,
-            bidderName: b.bidderName,
-            bidderAvatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(b.bidderName)}`,
-            amount: b.amount,
-            timestamp: new Date(b.time).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-          }));
-          setBidsHistory(mappedBids);
-        }
-      }
+      syncStoreData();
       setLoading(false);
     }
 
     loadAuctionData();
 
+    // Poll background sync endpoint every 3 seconds to keep bid history & counts updated
+    const pollInterval = setInterval(async () => {
+      try {
+        await fetch('/api/auctions/sync', { cache: 'no-store' });
+        if (isMounted) syncStoreData();
+      } catch {
+        // Silently skip failed poll requests
+      }
+    }, 3000);
+
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
     };
-  }, [id]);
+  }, [id, syncStoreData]);
 
+  // 3. Countdown calculation effect
   useEffect(() => {
     if (!auction) return;
 
     const calculateTimeLeft = () => {
+      const isExpiredByStatus = auction.status === 'ended' || auction.status === 'paid';
       const diff = new Date(auction.endTime).getTime() - new Date().getTime();
-      if (diff <= 0) {
+
+      if (diff <= 0 || isExpiredByStatus) {
         setTimeLeft({ hours: 0, minutes: 0, seconds: 0, isEnded: true });
         return;
       }
@@ -84,35 +108,25 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     return () => clearInterval(timer);
   }, [auction]);
 
+  // 4. Place bid via Server Action for proper synchronization
   const handlePlaceBid = useCallback(
-    (amount: number) => {
-      if (!auction) return;
+    async (amount: number) => {
+      if (!auction || !user) return;
 
-      const newBid: Bid = {
-        id: `bid_${Date.now()}`,
-        bidderName: user?.name || 'You',
-        bidderAvatar:
-          user?.avatar || 'https://api.dicebear.com/9.x/avataaars/svg?seed=You',
-        amount,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }),
-      };
-
-      setBidsHistory((prev) => [newBid, ...prev]);
-      setAuction((prev) =>
-        prev
-          ? {
-              ...prev,
-              currentHighestBid: amount,
-              bidsCount: prev.bidsCount + 1,
-            }
-          : prev
-      );
+      try {
+        const response = await placeBidAction(auction.id, amount);
+        if (!response.success) {
+          alert(response.message);
+          return;
+        }
+        syncStoreData(); // Refresh page state immediately after store update
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          alert(err.message);
+        }
+      }
     },
-    [auction, user]
+    [auction, user, syncStoreData]
   );
 
   const handleAddToCart = useCallback(() => {

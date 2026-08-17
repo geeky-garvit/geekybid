@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState, use } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { getAuctions, Auction } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
 import OrderSuccessView from './components/OrderSuccessView';
@@ -18,14 +17,13 @@ export default function WinnerCheckoutPage({
   searchParams: Promise<{ auctionId?: string }>;
 }) {
   const query = use(searchParams);
-  const searchParamsHook = useSearchParams();
   const { user } = useAuth();
 
-  const auctionId = query.auctionId || searchParamsHook.get('auctionId') || 'auc_1';
-  const auction: Auction | undefined = getAuctions().find((a) => a.id === auctionId);
+  const auctionId = query.auctionId || 'auc_1';
+  const [auction, setAuction] = useState<Auction | undefined>(undefined);
 
   // Form State
-  const [fullName, setFullName] = useState<string>(user?.name || 'Alex Vance');
+  const [fullName, setFullName] = useState<string>('Alex Vance');
   const [address, setAddress] = useState<string>('123 Innovation Way, Tech District');
   const [city, setCity] = useState<string>('San Francisco');
   const [zip, setZip] = useState<string>('94105');
@@ -34,6 +32,19 @@ export default function WinnerCheckoutPage({
   // Payment Webhook Simulation State
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
+
+  // Sync user details when AuthContext resolves
+  useEffect(() => {
+    if (user?.name) {
+      setFullName(user.name);
+    }
+  }, [user]);
+
+  // Load auction listing state
+  useEffect(() => {
+    const found = getAuctions().find((a) => a.id === auctionId);
+    setAuction(found);
+  }, [auctionId]);
 
   if (!auction) {
     return (
@@ -71,19 +82,44 @@ export default function WinnerCheckoutPage({
       setWebhookLogs((prev) => [...prev, log]);
     };
 
-    // Step 1: Initial Payment Intent Created
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    addLog('payment_intent.created');
+    try {
+      // Step 1: Initial Payment Intent Created
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      addLog('payment_intent.created');
 
-    // Step 2: Webhook Authorized
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    addLog('charge.authorized');
-    setPaymentStatus('webhook_received');
+      // Step 2: Webhook Authorized & Persist Order to Backend API
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      addLog('charge.authorized');
+      setPaymentStatus('webhook_received');
 
-    // Step 3: Webhook Payment Succeeded
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    addLog('payment_intent.succeeded');
-    setPaymentStatus('completed');
+      if (user?.id) {
+        await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            items: [
+              {
+                id: auction.id,
+                title: auction.title,
+                price: winningBid,
+                quantity: 1,
+                image: auction.images[0],
+              },
+            ],
+            totalAmount: parseFloat(totalAmount.toFixed(2)),
+          }),
+        });
+      }
+
+      // Step 3: Webhook Payment Succeeded
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      addLog('payment_intent.succeeded');
+      setPaymentStatus('completed');
+    } catch {
+      setPaymentStatus('failed');
+      alert('Failed to process payment simulation.');
+    }
   };
 
   return (

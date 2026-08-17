@@ -26,15 +26,13 @@ export async function POST(request: Request) {
       .update(bodyText)
       .digest('hex');
 
-    const signatureBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expectedSig);
-
+  
     if (
-      signatureBuffer.length !== expectedBuffer.length ||
-      !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
-    ) {
-      return NextResponse.json({ error: 'Invalid HMAC signature' }, { status: 401 });
-    }
+  signature.length !== expectedSig.length ||
+  !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))
+) {
+  return NextResponse.json({ error: 'Invalid HMAC signature' }, { status: 401 });
+}
 
     const payload = JSON.parse(bodyText) as PaymentWebhookPayload;
 

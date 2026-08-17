@@ -1,7 +1,7 @@
 import React from 'react';
 import { getAuctions, initializeStore } from '@/lib/store';
 import InfiniteAuctionGrid from '@/app/components/auction/InfiniteAuctionGrid';
-import AuctionSidebarFilter from './components/AuctionSidebarFilter';
+import AuctionHorizontalFilter from './components/AuctionSidebarFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,9 +65,9 @@ export default async function AuctionsPage({
       : null;
 
   return (
-    <div className="min-h-screen bg-slate-50 h-">
-      <main className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-4 gap-8 h-[50vh]">
-        <AuctionSidebarFilter 
+    <div className="min-h-screen bg-slate-50">
+      <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+        <AuctionHorizontalFilter 
           search={search}
           category={category}
           status={status}
@@ -75,10 +75,9 @@ export default async function AuctionsPage({
           maxPrice={maxPrice}
           endingWithin={endingWithin}
           sortBy={sortBy}
-          
         />
 
-        <section className="md:col-span-3 space-y-6">
+        <section className="space-y-6">
           <div className="flex justify-between items-center">
             <h1 className="text-xl font-black text-slate-900">
               Auction Marketplace{' '}

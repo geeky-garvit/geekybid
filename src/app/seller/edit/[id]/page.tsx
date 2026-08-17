@@ -1,20 +1,31 @@
-// src/app/seller/edit/[id]/page.tsx
 'use client';
 
-import { useState, use } from 'react';
+import React, { useState, useEffect, useTransition, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getAuctions } from '@/lib/store';
+import { getAuctions, Auction } from '@/lib/store';
+import { updateAuctionAction } from '@/app/actions/auction';
 
 export default function EditAuctionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
 
-  const auction = getAuctions().find((item) => item.id === id);
+  const [auction, setAuction] = useState<Auction | undefined>(undefined);
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('electronics');
+  const [description, setDescription] = useState('');
 
-  const [title, setTitle] = useState(auction?.title || '');
-  const [category, setCategory] = useState(auction?.category || 'electronics');
-  const [description, setDescription] = useState(auction?.description || '');
+  // Hydrate state cleanly on client side
+  useEffect(() => {
+    const found = getAuctions().find((item) => item.id === id);
+    if (found) {
+      setAuction(found);
+      setTitle(found.title);
+      setCategory(found.category);
+      setDescription(found.description);
+    }
+  }, [id]);
 
   if (!auction) {
     return (
@@ -36,8 +47,22 @@ export default function EditAuctionPage({ params }: { params: Promise<{ id: stri
       return;
     }
 
-    alert('Listing updated successfully!');
-    router.push('/seller/dashboard');
+    startTransition(async () => {
+      const res = await updateAuctionAction({
+        id: auction.id,
+        title: title.trim(),
+        category,
+        description: description.trim(),
+      });
+
+      if (res.success) {
+        alert('Listing updated successfully!');
+        router.push('/seller/dashboard');
+        router.refresh();
+      } else {
+        alert(res.error || 'Failed to update listing.');
+      }
+    });
   };
 
   return (
@@ -103,6 +128,9 @@ export default function EditAuctionPage({ params }: { params: Promise<{ id: stri
             <option value="electronics">Electronics</option>
             <option value="photography">Photography</option>
             <option value="collectibles">Collectibles</option>
+            <option value="art">Art</option>
+            <option value="fashion">Fashion</option>
+            <option value="jewelry">Jewelry</option>
             <option value="general">General</option>
           </select>
         </div>
@@ -137,14 +165,14 @@ export default function EditAuctionPage({ params }: { params: Promise<{ id: stri
         {/* Submit Action */}
         <button
           type="submit"
-          disabled={isLocked}
+          disabled={isLocked || isPending}
           className={`w-full font-bold py-3 rounded-xl text-xs transition shadow-sm ${
-            isLocked
+            isLocked || isPending
               ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
               : 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20'
           }`}
         >
-          {isLocked ? 'Listing Locked' : 'Save Changes'}
+          {isLocked ? 'Listing Locked' : isPending ? 'Saving...' : 'Save Changes'}
         </button>
       </form>
     </div>

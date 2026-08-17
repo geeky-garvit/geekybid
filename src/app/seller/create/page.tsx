@@ -1,10 +1,9 @@
-// src/app/seller/create/page.tsx
 'use client';
 
 import React, { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '@/context/AuthContext'; // 1. Use Auth Context
+import { useAuth } from '@/context/AuthContext';
 import { createAuctionAction } from '@/app/actions/auction';
 import ItemDetailsSection from './components/ItemDetailsSection';
 import PricingSection from './components/PricingSection';
@@ -14,7 +13,7 @@ const CATEGORIES = ['electronics', 'art', 'collectibles', 'fashion', 'jewelry'];
 
 export default function CreateAuctionPage() {
   const router = useRouter();
-  const { user } = useAuth(); // 2. Access active logged-in profile
+  const { user } = useAuth();
   const [isPending, startTransition] = useTransition();
 
   const [title, setTitle] = useState('');
@@ -30,14 +29,24 @@ export default function CreateAuctionPage() {
 
   if (!user) {
     return (
-      <div className="max-w-md mx-auto py-16 text-center">
-        <p className="text-slate-600 font-bold">Please select a profile from the header to create an auction.</p>
+      <div className="max-w-md mx-auto py-16 text-center space-y-4">
+        <span className="text-3xl block">👤</span>
+        <p className="text-slate-600 font-bold text-sm">
+          Please select or log into a seller profile to create an auction listing.
+        </p>
+        <Link
+          href="/login"
+          className="inline-block bg-purple-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl hover:bg-purple-700 transition"
+        >
+          Sign In
+        </Link>
       </div>
     );
   }
 
   const handleAddImageUrl = (url: string) => {
-    setImageUrls((prev) => [...prev, url]);
+    if (!url.trim()) return;
+    setImageUrls((prev) => [...prev, url.trim()]);
   };
 
   const handleRemoveImage = (index: number) => {
@@ -47,9 +56,20 @@ export default function CreateAuctionPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!title.trim()) {
+      alert('Please enter a listing title.');
+      return;
+    }
+
     const startPrice = parseFloat(startingBid);
     if (isNaN(startPrice) || startPrice <= 0) {
-      alert('Please enter a valid starting price.');
+      alert('Please enter a valid starting price greater than $0.');
+      return;
+    }
+
+    const parsedReserve = reservePrice ? parseFloat(reservePrice) : undefined;
+    if (parsedReserve !== undefined && (isNaN(parsedReserve) || parsedReserve < startPrice)) {
+      alert('Reserve price must be greater than or equal to the starting bid.');
       return;
     }
 
@@ -61,22 +81,20 @@ export default function CreateAuctionPage() {
     const endTime = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
     startTransition(async () => {
-      // 3. Bind auction to current authenticated user
       const res = await createAuctionAction({
-        title,
+        title: title.trim(),
         category,
-        description,
+        description: description.trim(),
         startingPrice: startPrice,
         minIncrement: 5,
         endTime,
         images: imageUrls,
-        sellerId: user.id, 
+        sellerId: user.id,
         sellerName: user.name,
         sellerAvatar: user.avatar,
       });
 
       if (res.success) {
-        // 4. Redirect straight to dashboard and refresh router cache
         router.push('/seller/dashboard');
         router.refresh();
       } else {

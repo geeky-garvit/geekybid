@@ -1,27 +1,87 @@
-// src/app/page.tsx
 import Link from 'next/link';
 import Image from 'next/image';
-import { getAuctions } from '@/lib/store';
+import { getAuctions, initializeStore, Auction } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
-  const allAuctions = getAuctions();
+function getBidCount(item: Auction): number {
+  return Array.isArray(item.history) ? item.history.length : item.bidsCount || 0;
+}
 
-  // Filter live auctions
+function getTimeLeft(endTimeStr: string): string {
+  const diff = new Date(endTimeStr).getTime() - Date.now();
+  if (diff <= 0) return 'Ended';
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours > 24) {
+    const days = Math.floor(hours / 24);
+    return `${days}d ${hours % 24}h left`;
+  }
+  return `${hours}h ${mins}m left`;
+}
+
+// Reusable Auction Card
+function AuctionCard({ item, badgeText, badgeBg }: { item: Auction; badgeText: string; badgeBg: string }) {
+  const imageSrc =
+    item.images && item.images.length > 0
+      ? item.images[0]
+      : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600';
+
+  return (
+    <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between">
+      <div>
+        <div className="relative aspect-square w-full bg-slate-100">
+          <Image
+            src={imageSrc}
+            alt={item.title}
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 25vw"
+          />
+          <div className={`absolute top-3 left-3 text-white font-bold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-sm ${badgeBg}`}>
+            {badgeText}
+          </div>
+        </div>
+
+        <div className="p-4 space-y-2">
+          <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">
+            {item.category}
+          </span>
+          <h3 className="font-bold text-slate-900 text-sm line-clamp-1">{item.title}</h3>
+          <p className="text-xs text-slate-500 line-clamp-2">{item.description}</p>
+        </div>
+      </div>
+
+      <div className="p-4 pt-0 border-t border-slate-100 mt-4 flex items-center justify-between">
+        <div>
+          <span className="text-[10px] text-slate-400 block font-semibold">Highest Bid</span>
+          <span className="text-lg font-black text-purple-950">${item.currentHighestBid.toFixed(2)}</span>
+        </div>
+        <Link
+          href={`/auction/${encodeURIComponent(item.id)}`}
+          className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
+        >
+          Place Bid
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export default async function HomePage() {
+  await initializeStore();
+
+  const allAuctions = getAuctions();
   const liveAuctions = allAuctions.filter((a) => a.status === 'live');
 
-  // 1. Ending Soonest (sorted by endTime ascending)
   const endingSoon = [...liveAuctions]
     .sort((a, b) => new Date(a.endTime).getTime() - new Date(b.endTime).getTime())
     .slice(0, 4);
 
-  // 2. Hot Auctions (sorted by bidsCount descending)
   const hotAuctions = [...liveAuctions]
-    .sort((a, b) => b.bidsCount - a.bidsCount)
+    .sort((a, b) => getBidCount(b) - getBidCount(a))
     .slice(0, 4);
 
-  // Dynamic Case-Insensitive Category Aggregation
   const categoryCounts = allAuctions.reduce<Record<string, number>>((acc, item) => {
     if (!item.category) return acc;
     const key = item.category.toLowerCase();
@@ -40,18 +100,6 @@ export default async function HomePage() {
     ...cat,
     count: categoryCounts[cat.key] || 0,
   }));
-
-  const getTimeLeft = (endTimeStr: string) => {
-    const diff = new Date(endTimeStr).getTime() - new Date().getTime();
-    if (diff <= 0) return 'Ended';
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    if (hours > 24) {
-      const days = Math.floor(hours / 24);
-      return `${days}d ${hours % 24}h left`;
-    }
-    return `${hours}h ${mins}m left`;
-  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -121,70 +169,20 @@ export default async function HomePage() {
               </h2>
               <p className="text-xs text-slate-500">Don&apos;t miss your chance to place the winning bid.</p>
             </div>
-            <Link
-              href="/auctions?status=live"
-              className="text-xs font-bold text-purple-600 hover:underline"
-            >
+            <Link href="/auctions?status=live" className="text-xs font-bold text-purple-600 hover:underline">
               View All Live →
             </Link>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {endingSoon.map((item) => {
-              const imageSrc =
-                item.images && item.images.length > 0
-                  ? item.images[0]
-                  : 'https://picsum.photos/seed/fallback/600/600';
-
-              return (
-                <div
-                  key={item.id}
-                  className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="relative aspect-square w-full bg-slate-100">
-                      <Image
-                        src={imageSrc}
-                        alt={item.title}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 100vw, 25vw"
-                      />
-                      <div className="absolute top-3 left-3 bg-rose-500/90 text-white font-bold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-sm">
-                        ⏰ {getTimeLeft(item.endTime)}
-                      </div>
-                    </div>
-
-                    <div className="p-4 space-y-2">
-                      <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">
-                        {item.category}
-                      </span>
-                      <h3 className="font-bold text-slate-900 text-sm line-clamp-1">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-slate-500 line-clamp-2">
-                        {item.description}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-4 pt-0 border-t border-slate-100 mt-4 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">Highest Bid</span>
-                      <span className="text-lg font-black text-purple-950">
-                        ${item.currentHighestBid.toFixed(2)}
-                      </span>
-                    </div>
-                    <Link
-                      href={`/auction/${item.id}`}
-                      className="bg-slate-900 hover:bg-purple-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
-                    >
-                      Place Bid
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
+            {endingSoon.map((item) => (
+              <AuctionCard
+                key={item.id}
+                item={item}
+                badgeText={`⏰ ${getTimeLeft(item.endTime)}`}
+                badgeBg="bg-rose-500/90"
+              />
+            ))}
           </div>
         </section>
 
@@ -197,77 +195,29 @@ export default async function HomePage() {
               </h2>
               <p className="text-xs text-slate-500">Most active bidding wars happening right now.</p>
             </div>
-            <Link
-              href="/auctions"
-              className="text-xs font-bold text-purple-600 hover:underline"
-            >
+            <Link href="/auctions" className="text-xs font-bold text-purple-600 hover:underline">
               Explore Marketplace →
             </Link>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {hotAuctions.map((item) => {
-              const imageSrc =
-                item.images && item.images.length > 0
-                  ? item.images[0]
-                  : 'https://picsum.photos/seed/fallback/600/600';
-
+              const bids = getBidCount(item);
               return (
-                <div
+                <AuctionCard
                   key={item.id}
-                  className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="relative aspect-square w-full bg-slate-100">
-                      <Image
-                        src={imageSrc}
-                        alt={item.title}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 100vw, 25vw"
-                      />
-                      <div className="absolute top-3 right-3 bg-purple-900/90 text-white font-bold text-[10px] px-2.5 py-1 rounded-full backdrop-blur-sm">
-                        {item.bidsCount} Bids Placed
-                      </div>
-                    </div>
-
-                    <div className="p-4 space-y-2">
-                      <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">
-                        {item.category}
-                      </span>
-                      <h3 className="font-bold text-slate-900 text-sm line-clamp-1">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-slate-500 line-clamp-2">
-                        {item.description}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-4 pt-0 border-t border-slate-100 mt-4 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">Current Bid</span>
-                      <span className="text-lg font-black text-purple-950">
-                        ${item.currentHighestBid.toFixed(2)}
-                      </span>
-                    </div>
-                    <Link
-                      href={`/auction/${item.id}`}
-                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
-                    >
-                      View & Bid
-                    </Link>
-                  </div>
-                </div>
+                  item={item}
+                  badgeText={`🔥 ${bids} ${bids === 1 ? 'Bid' : 'Bids'}`}
+                  badgeBg="bg-purple-900/90"
+                />
               );
             })}
           </div>
         </section>
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-8 text-center text-xs text-slate-500">
-        <p>© 2026 GeekyBid Platform. eBay-Style Realtime Bidding.</p>
+        <p>© 2026 GeekyBid - Garvit Chawla.</p>
       </footer>
     </div>
   );

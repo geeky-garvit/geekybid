@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { store, Order } from '@/lib/store';
 
 interface OrderItemInput {
-  id: string; // auctionId or productId
+  id: string;
   price: number;
   quantity: number;
   title?: string;
@@ -23,7 +23,6 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
 
-    // Safe fallback in case store.orders is uninitialized
     const allOrders = store.orders || [];
 
     if (userId) {

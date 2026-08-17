@@ -22,6 +22,7 @@ export default function CheckoutPage() {
 
   const handleProcessCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!user) {
       alert('Please log in to complete checkout.');
       return;
@@ -50,25 +51,17 @@ export default function CheckoutPage() {
       const orderData = await orderRes.json();
 
       if (!orderRes.ok) {
-        throw new Error(orderData.error || 'Failed to place order');
+        throw new Error(orderData.error || 'Failed to place order.');
       }
 
-      // 2. Trigger Payment Webhook Simulation
-      await fetch('/api/webhooks/payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: orderData.order.id,
-          status: 'succeeded',
-        }),
-      });
-
-      // 3. Clear Cart & Redirect to Orders Page
+      // 2. Clear Cart & Redirect to Orders Page
       clearCart();
-      alert('🎉 Payment successful! Order placed.');
+      alert('🎉 Order placed successfully!');
       router.push('/orders');
-    } catch (err: any) {
-      alert(`Checkout failed: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'An unexpected error occurred during checkout.';
+      alert(`Checkout failed: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -83,8 +76,8 @@ export default function CheckoutPage() {
         <div className="bg-white p-6 border rounded-2xl shadow-sm space-y-4">
           <h2 className="text-lg font-bold">Items Summary</h2>
           <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-            {cart.map((item) => (
-              <div key={item.id} className="flex justify-between items-center text-xs">
+            {cart.map((item, index) => (
+              <div key={`${item.id}-${index}`} className="flex justify-between items-center text-xs">
                 <div>
                   <p className="font-bold text-slate-800">{item.title}</p>
                   <span className="text-slate-400">Qty: {item.quantity}</span>
@@ -152,7 +145,7 @@ export default function CheckoutPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || cart.length === 0}
             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs transition mt-4 disabled:opacity-50"
           >
             {loading ? 'Processing Order...' : `Pay $${totalAmount.toFixed(2)}`}

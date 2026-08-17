@@ -1,14 +1,15 @@
 // src/app/api/products/[id]/route.ts
 import { NextResponse } from 'next/server';
-import { getAllProducts } from '@/lib/products-store';
+import { getAllProducts, Product } from '@/lib/products-store';
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
-    const products = await getAllProducts();
-    const product = products.find((p) => p.id === params.id);
+    const params = await props.params;
+    const products: Product[] = await getAllProducts();
+    const product = products.find((p: Product) => p.id === params.id);
 
     if (!product) {
       return NextResponse.json(

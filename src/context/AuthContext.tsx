@@ -94,16 +94,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = (newUser: User) => {
-    setUser(newUser);
-    localStorage.setItem('geekybid_user', JSON.stringify(newUser));
-    loadUserWatchlist(newUser.id); // Load the new profile's specific watchlist
-  };
+  setUser(newUser);
+  localStorage.setItem('geekybid_user', JSON.stringify(newUser));
+  // Sync with server cookie for Server Actions / API routes
+  document.cookie = `user_session=${encodeURIComponent(JSON.stringify(newUser))}; path=/; max-age=86400; SameSite=Lax`;
+  loadUserWatchlist(newUser.id);
+};
 
-  const logout = () => {
-    setUser(null);
-    setWatchlist([]); // Clear interface state on logout
-    localStorage.removeItem('geekybid_user');
-  };
+const logout = () => {
+  setUser(null);
+  setWatchlist([]);
+  localStorage.removeItem('geekybid_user');
+  document.cookie = 'user_session=; path=/; max-age=0;';
+};
 
   const toggleWatchlist = (auctionId: string) => {
     if (!user) return;
@@ -118,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isWatchlisted = (auctionId: string) => watchlist.includes(auctionId);
 
-  if (!isLoaded) return null;
+  
 
   return (
     <AuthContext.Provider
