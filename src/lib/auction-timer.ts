@@ -1,4 +1,3 @@
-// src/lib/auction-timer.ts
 
 export interface TimeLeft {
   days: number;
@@ -9,10 +8,6 @@ export interface TimeLeft {
   totalRemainingMs: number;
 }
 
-/**
- * Calculates time remaining against server time (or fixed UTC).
- * Prevents client-side time manipulation.
- */
 export function calculateTimeRemaining(endTimeISO: string, currentServerTimeMs: number = Date.now()): TimeLeft {
   const endMs = new Date(endTimeISO).getTime();
   const totalRemainingMs = endMs - currentServerTimeMs;

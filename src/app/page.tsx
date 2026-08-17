@@ -20,7 +20,6 @@ function getTimeLeft(endTimeStr: string): string {
   return `${hours}h ${mins}m left`;
 }
 
-// Reusable Auction Card
 function AuctionCard({ item, badgeText, badgeBg }: { item: Auction; badgeText: string; badgeBg: string }) {
   const imageSrc =
     item.images && item.images.length > 0

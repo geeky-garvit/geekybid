@@ -41,8 +41,7 @@ export default function CheckoutPage() {
     try {
       cart.forEach((item) => createOrder(item.id, user.id, item.price * item.quantity));
       notify('Order placed', `${cart.length} item${cart.length === 1 ? '' : 's'} added to your local order history.`);
-
-      // 2. Clear Cart & Redirect to Orders Page
+     
       clearCart();
       alert('🎉 Order placed successfully!');
       router.push('/orders');

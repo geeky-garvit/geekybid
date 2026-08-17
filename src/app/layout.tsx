@@ -1,4 +1,3 @@
-// src/app/layout.tsx
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';

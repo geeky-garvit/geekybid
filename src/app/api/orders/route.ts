@@ -1,4 +1,3 @@
-// src/app/api/orders/route.ts
 import { NextResponse } from 'next/server';
 import { store, Order } from '@/lib/store';
 import { getCurrentUser } from '@/lib/auth';

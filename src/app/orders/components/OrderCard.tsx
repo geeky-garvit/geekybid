@@ -89,7 +89,7 @@ export default function OrderCard({ order }: OrderCardProps) {
                         src={item.image}
                         alt={item.title || 'Product Image'}
                         fill
-                        unoptimized // Bypasses host domain configuration errors for Picsum/DummyJSON
+                        unoptimized 
                         className="object-cover"
                         sizes="40px"
                       />

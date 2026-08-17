@@ -1,4 +1,3 @@
-// Kept for the optional product routes; the catalogue is intentionally local.
 export interface Product { id: string; title: string; description: string; price: number; category: string; images: string[] }
 
 const productNames = ['Compact Camera', 'Gaming Keyboard', 'Vinyl Record Player', 'Leather Messenger Bag', 'Desk Lamp', 'Wireless Earbuds'];

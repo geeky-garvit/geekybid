@@ -1,4 +1,4 @@
-// src/components/SynchronizedTimer.tsx
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,7 +6,7 @@ import { calculateTimeRemaining, TimeLeft } from '@/lib/auction-timer';
 import { getServerTime } from '@/app/actions/time';
 
 interface SynchronizedTimerProps {
-  endTimeISO: string; // Absolute ISO string (e.g., "2026-08-18T17:00:00.000Z")
+  endTimeISO: string; 
   onAuctionEnd?: () => void;
 }
 
@@ -17,12 +17,12 @@ export default function SynchronizedTimer({ endTimeISO, onAuctionEnd }: Synchron
     let timerId: NodeJS.Timeout;
 
     async function initTimer() {
-      // Get exact time from server
+      
       const initialServerTime = await getServerTime();
       let localOffset = Date.now() - initialServerTime;
 
       const updateClock = () => {
-        // Calculate true server-synced current time
+        
         const currentSyncedTime = Date.now() - localOffset;
         const computed = calculateTimeRemaining(endTimeISO, currentSyncedTime);
 
@@ -34,10 +34,10 @@ export default function SynchronizedTimer({ endTimeISO, onAuctionEnd }: Synchron
         }
       };
 
-      // Initial run
+      
       updateClock();
 
-      // Tick every second
+     
       timerId = setInterval(updateClock, 1000);
     }
 

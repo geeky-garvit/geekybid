@@ -22,26 +22,22 @@ export default function WinnerCheckoutPage({
   const auctionId = query.auctionId || 'auc_1';
   const [auction, setAuction] = useState<Auction | undefined>(undefined);
 
-  // Form State
   const [fullName, setFullName] = useState<string>('Alex Vance');
   const [address, setAddress] = useState<string>('123 Innovation Way, Tech District');
   const [city, setCity] = useState<string>('San Francisco');
   const [zip, setZip] = useState<string>('94105');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'crypto'>('card');
 
-  // Payment Webhook Simulation State
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [orderId, setOrderId] = useState<string | null>(null);
 
-  // Sync user details when AuthContext resolves
   useEffect(() => {
     if (user?.name) {
       setFullName(user.name);
     }
   }, [user]);
 
-  // Load auction listing state
   useEffect(() => {
     initializeStore().then(() => setAuction(getAuctions().find((a) => a.id === auctionId)));
   }, [auctionId]);
@@ -61,7 +57,6 @@ export default function WinnerCheckoutPage({
     );
   }
 
-  // Cost Calculations
   const winningBid = auction.currentHighestBid;
   const shippingFee = 15.0;
   const estimatedTax = winningBid * 0.08;
@@ -84,11 +79,9 @@ export default function WinnerCheckoutPage({
     };
 
     try {
-      // Step 1: Initial Payment Intent Created
       await new Promise((resolve) => setTimeout(resolve, 800));
       addLog('payment_intent.created');
 
-      // Step 2: Webhook Authorized & Persist Order to Backend API
       await new Promise((resolve) => setTimeout(resolve, 1200));
       addLog('charge.authorized');
       setPaymentStatus('webhook_received');
@@ -100,7 +93,6 @@ export default function WinnerCheckoutPage({
         throw new Error('Authentication required to complete checkout.');
       }
 
-      // Step 3: Webhook Payment Succeeded
       await new Promise((resolve) => setTimeout(resolve, 1000));
       if (!createdOrderId) throw new Error('Order creation did not return an ID.');
       markOrderPaid(createdOrderId);

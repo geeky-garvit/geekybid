@@ -1,4 +1,3 @@
-// src/app/api/products/route.ts
 import { NextResponse } from 'next/server';
 import { getAllProducts } from '@/lib/products-store';
 
@@ -10,11 +9,11 @@ export async function GET(request: Request) {
     const minPrice = searchParams.get('minPrice') ? Number(searchParams.get('minPrice')) : null;
     const maxPrice = searchParams.get('maxPrice') ? Number(searchParams.get('maxPrice')) : null;
     const limit = Math.min(Number(searchParams.get('limit')) || 20, 100);
-    const cursor = searchParams.get('cursor'); // Base64 or plain ID cursor
+    const cursor = searchParams.get('cursor'); 
 
     let products = await getAllProducts();
 
-    // 1. Apply Filtering
+
     if (category) {
       products = products.filter((p) => p.category.toLowerCase() === category.toLowerCase());
     }
@@ -30,7 +29,6 @@ export async function GET(request: Request) {
       products = products.filter((p) => p.price <= maxPrice);
     }
 
-    // 2. Apply Cursor-Based Pagination
     let startIndex = 0;
     if (cursor) {
       const decodedCursor = Buffer.from(cursor, 'base64').toString('utf-8');

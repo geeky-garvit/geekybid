@@ -17,7 +17,6 @@ export default function EditAuctionPage({ params }: { params: Promise<{ id: stri
   const [category, setCategory] = useState('electronics');
   const [description, setDescription] = useState('');
 
-  // Hydrate state cleanly on client side
   useEffect(() => {
     initializeStore().then(() => {
       const found = getAuctions().find((item) => item.id === id);

@@ -25,8 +25,6 @@ export default function AuctionHorizontalFilter({
 }: AuctionFilterProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  // Local form states
   const [searchValue, setSearchValue] = useState(search);
   const [categoryValue, setCategoryValue] = useState(category);
   const [statusValue, setStatusValue] = useState(status);
@@ -37,7 +35,6 @@ export default function AuctionHorizontalFilter({
   );
   const [sortByValue, setSortByValue] = useState(sortBy);
 
-  // Sync state whenever URL parameters change (handles back/forward browser buttons)
   useEffect(() => {
     setSearchValue(searchParams.get('search') || '');
     setCategoryValue(searchParams.get('category') || 'all');
@@ -65,7 +62,6 @@ export default function AuctionHorizontalFilter({
     router.push(queryString ? `/auctions?${queryString}` : '/auctions');
   };
 
-  // Count active non-default filters for UI feedback
   const activeFilterCount = [
     searchValue.trim() !== '',
     categoryValue !== 'all',
@@ -78,7 +74,6 @@ export default function AuctionHorizontalFilter({
 
   return (
     <div className="w-full bg-white border border-slate-200/80 rounded-2xl p-4 md:p-5 shadow-sm space-y-4 h-[25vh] ">
-      {/* Top Header Row */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
         <div className="flex items-center gap-2">
           <svg
@@ -112,7 +107,6 @@ export default function AuctionHorizontalFilter({
 
       {/* Horizontal Form Grid */}
       <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
-        {/* Search */}
         <div className="lg:col-span-2">
           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
             Search
@@ -137,7 +131,6 @@ export default function AuctionHorizontalFilter({
           </div>
         </div>
 
-        {/* Category */}
         <div>
           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
             Category

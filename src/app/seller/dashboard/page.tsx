@@ -61,13 +61,12 @@ export default function SellerDashboardPage() {
     );
   }
 
-  // Filter for current seller's listings
+
   const sellerAuctions = allAuctions.filter((a) => a.sellerId === user.id);
 
   const activeListings = sellerAuctions.filter((a) => a.status === 'live');
   const soldListings = sellerAuctions.filter((a) => a.status === 'ended');
 
-  // Real Calculations derived directly from seller's actual bids
   const totalRevenue = soldListings.reduce((sum, item) => sum + item.currentHighestBid, 0);
   const totalBidsReceived = sellerAuctions.reduce((sum, item) => sum + item.bidsCount, 0);
 
@@ -76,7 +75,6 @@ export default function SellerDashboardPage() {
       ? ((soldListings.length / sellerAuctions.length) * 100).toFixed(1)
       : '0.0';
 
-  // Extract real live bid history across seller's listings safely
   const realRecentBids: ActivityItem[] = sellerAuctions
     .flatMap((auction) =>
       (auction.history || []).map((bid: Bid) => {

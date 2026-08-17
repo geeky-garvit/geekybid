@@ -1,9 +1,8 @@
-// src/app/api/webhooks/payment/route.ts
+
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { markOrderPaid } from '@/lib/store';
 
-// This demo is intentionally self-contained; override this in production.
 const DEMO_WEBHOOK_SECRET = 'geekybid-demo-webhook-secret';
 
 interface PaymentWebhookPayload {

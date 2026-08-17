@@ -1,4 +1,3 @@
-// src/app/components/UserSwitcherModal.tsx
 'use client';
 
 import React, { useState } from 'react';
