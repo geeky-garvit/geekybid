@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useTransition, use } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getAuctions, Auction } from '@/lib/store';
-import { updateAuctionAction } from '@/app/actions/auction';
+import { getAuctions, Auction, initializeStore, updateAuctionDetails } from '@/lib/store';
+import { useAuth } from '@/context/AuthContext';
 
 export default function EditAuctionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const { user } = useAuth();
+  const [isPending, setIsPending] = useState(false);
 
   const [auction, setAuction] = useState<Auction | undefined>(undefined);
   const [title, setTitle] = useState('');
@@ -18,13 +19,10 @@ export default function EditAuctionPage({ params }: { params: Promise<{ id: stri
 
   // Hydrate state cleanly on client side
   useEffect(() => {
-    const found = getAuctions().find((item) => item.id === id);
-    if (found) {
-      setAuction(found);
-      setTitle(found.title);
-      setCategory(found.category);
-      setDescription(found.description);
-    }
+    initializeStore().then(() => {
+      const found = getAuctions().find((item) => item.id === id);
+      if (found) { setAuction(found); setTitle(found.title); setCategory(found.category); setDescription(found.description); }
+    });
   }, [id]);
 
   if (!auction) {
@@ -47,22 +45,16 @@ export default function EditAuctionPage({ params }: { params: Promise<{ id: stri
       return;
     }
 
-    startTransition(async () => {
-      const res = await updateAuctionAction({
-        id: auction.id,
-        title: title.trim(),
-        category,
-        description: description.trim(),
-      });
-
-      if (res.success) {
-        alert('Listing updated successfully!');
-        router.push('/seller/dashboard');
-        router.refresh();
-      } else {
-        alert(res.error || 'Failed to update listing.');
-      }
-    });
+    if (!user) return;
+    setIsPending(true);
+    try {
+      updateAuctionDetails(auction.id, user.id, { title: title.trim(), category, description: description.trim() });
+      alert('Listing updated successfully!');
+      router.push('/seller/dashboard');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to update listing.');
+      setIsPending(false);
+    }
   };
 
   return (

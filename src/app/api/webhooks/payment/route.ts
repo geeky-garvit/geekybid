@@ -1,7 +1,10 @@
 // src/app/api/webhooks/payment/route.ts
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { store } from '@/lib/store';
+import { markOrderPaid } from '@/lib/store';
+
+// This demo is intentionally self-contained; override this in production.
+const DEMO_WEBHOOK_SECRET = 'geekybid-demo-webhook-secret';
 
 interface PaymentWebhookPayload {
   event: string;
@@ -15,7 +18,7 @@ export async function POST(request: Request) {
   try {
     const bodyText = await request.text();
     const signature = request.headers.get('x-payment-signature');
-    const secret = process.env.WEBHOOK_SECRET || 'mock_secret_123';
+    const secret = process.env.WEBHOOK_SECRET ?? DEMO_WEBHOOK_SECRET;
 
     if (!signature) {
       return NextResponse.json({ error: 'Missing x-payment-signature header' }, { status: 401 });
@@ -38,17 +41,7 @@ export async function POST(request: Request) {
 
     if (payload.event === 'payment.succeeded') {
       const { orderId } = payload.data;
-      const order = store.orders?.find((item) => item.id === orderId);
-
-      if (!order) {
-        return NextResponse.json({ error: `Order ${orderId} not found` }, { status: 404 });
-      }
-
-      order.isPaid = true;
-      const auction = store.auctions.find((item) => item.id === order.auctionId);
-      if (auction) {
-        auction.status = 'ended'; // or 'paid' based on your store types
-      }
+      markOrderPaid(orderId);
 
       return NextResponse.json({ success: true, orderId });
     }
@@ -56,8 +49,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal Server Error' },
-      { status: 500 }
+      { error: error instanceof Error ? error.message : 'Unable to process webhook' },
+      { status: error instanceof Error && error.message === 'Order not found.' ? 404 : 500 }
     );
   }
 }

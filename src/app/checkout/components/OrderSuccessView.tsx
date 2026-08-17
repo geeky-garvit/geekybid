@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 
 interface OrderSuccessViewProps {
+  orderId: string;
   fullName: string;
   address: string;
   city: string;
@@ -12,14 +13,13 @@ interface OrderSuccessViewProps {
 }
 
 export default function OrderSuccessView({
+  orderId,
   fullName,
   address,
   city,
   zip,
   totalAmount,
 }: OrderSuccessViewProps) {
-  const orderId = `GB-${Math.floor(100000 + Math.random() * 900000)}`;
-
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-2xl mx-auto text-center space-y-6 shadow-sm">
       <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto">

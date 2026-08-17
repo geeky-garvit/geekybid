@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Auction, Bid } from '@/lib/store';
+import { Auction, Bid, getAuctions, initializeStore, subscribeToStore } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
 
 interface ActivityItem {
@@ -22,22 +22,7 @@ export default function SellerDashboardPage() {
   const [activeTab, setActiveTab] = useState<'listings' | 'bids' | 'sold'>('listings');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Sync Store Data with API
-  const syncDashboardData = useCallback(async () => {
-    try {
-      const res = await fetch('/api/auctions/sync', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.auctions)) {
-          setAllAuctions(data.auctions);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to sync seller dashboard:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const syncDashboardData = useCallback(async () => { await initializeStore(); setAllAuctions(getAuctions()); setIsLoading(false); }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -50,16 +35,11 @@ export default function SellerDashboardPage() {
 
     runSync();
 
-    // Poll every 5 seconds only when document is visible
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && isMounted) {
-        syncDashboardData();
-      }
-    }, 5000);
+    const unsubscribe = subscribeToStore(() => { if (isMounted) setAllAuctions(getAuctions()); });
 
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      unsubscribe();
     };
   }, [syncDashboardData]);
 

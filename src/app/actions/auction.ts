@@ -3,15 +3,15 @@
 import { revalidatePath } from 'next/cache';
 import {
   createAuction,
-  getAuctions,
-  saveAuctions,
   store,
   Auction,
+  updateAuctionDetails,
 } from '@/lib/store';
+import { getCurrentUser } from '@/lib/auth';
 
 export type CreateAuctionInput = Omit<
   Auction,
-  'id' | 'currentHighestBid' | 'bidsCount' | 'status' | 'history'
+  'id' | 'currentHighestBid' | 'bidsCount' | 'status' | 'history' | 'sellerId' | 'sellerName' | 'sellerAvatar'
 >;
 
 export interface UpdateAuctionPayload {
@@ -24,7 +24,17 @@ export interface UpdateAuctionPayload {
 // Auction Creation Action used by seller/create/page.tsx
 export async function createAuctionAction(data: CreateAuctionInput) {
   try {
-    const newAuction = createAuction(data);
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return { success: false, error: 'Authentication required to create an auction.' };
+    }
+
+    const newAuction = createAuction({
+      ...data,
+      sellerId: currentUser.id,
+      sellerName: currentUser.name,
+      sellerAvatar: currentUser.avatar,
+    });
 
     revalidatePath('/auctions');
     revalidatePath('/seller/dashboard');
@@ -42,25 +52,16 @@ export async function createAuctionAction(data: CreateAuctionInput) {
 // Auction Update Action used by seller/edit/[id]/page.tsx
 export async function updateAuctionAction(payload: UpdateAuctionPayload) {
   try {
-    const auctions = getAuctions();
-    const index = auctions.findIndex((a) => a.id === payload.id);
-
-    if (index === -1) {
-      return { success: false, error: 'Auction not found.' };
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return { success: false, error: 'Authentication required to edit an auction.' };
     }
 
-    if (auctions[index].bidsCount > 0) {
-      return { success: false, error: 'Cannot edit an auction with existing bids.' };
-    }
-
-    auctions[index] = {
-      ...auctions[index],
+    updateAuctionDetails(payload.id, currentUser.id, {
       title: payload.title,
       category: payload.category,
       description: payload.description,
-    };
-
-    saveAuctions(auctions);
+    });
 
     revalidatePath(`/auction/${payload.id}`);
     revalidatePath('/seller/dashboard');

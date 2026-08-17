@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { createAuctionAction } from '@/app/actions/auction';
+import { createAuction } from '@/lib/store';
 import ItemDetailsSection from './components/ItemDetailsSection';
 import PricingSection from './components/PricingSection';
 import ImageUploaderSection from './components/ImageUploaderSection';
@@ -14,7 +14,7 @@ const CATEGORIES = ['electronics', 'art', 'collectibles', 'fashion', 'jewelry'];
 export default function CreateAuctionPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -80,8 +80,9 @@ export default function CreateAuctionPage() {
 
     const endTime = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
-    startTransition(async () => {
-      const res = await createAuctionAction({
+    setIsPending(true);
+    try {
+      createAuction({
         title: title.trim(),
         category,
         description: description.trim(),
@@ -94,13 +95,11 @@ export default function CreateAuctionPage() {
         sellerAvatar: user.avatar,
       });
 
-      if (res.success) {
-        router.push('/seller/dashboard');
-        router.refresh();
-      } else {
-        alert(res.error || 'Failed to create auction.');
-      }
-    });
+      router.push('/seller/dashboard');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to create auction.');
+      setIsPending(false);
+    }
   };
 
   return (

@@ -1,37 +1,18 @@
-// src/lib/products-store.ts
-export interface Product {
-  id: string;
-  title: string;
-  description: string;
-  price: number;
-  category: string;
-  images: string[];
-}
+// Kept for the optional product routes; the catalogue is intentionally local.
+export interface Product { id: string; title: string; description: string; price: number; category: string; images: string[] }
 
-let cachedProducts: Product[] | null = null;
+const productNames = ['Compact Camera', 'Gaming Keyboard', 'Vinyl Record Player', 'Leather Messenger Bag', 'Desk Lamp', 'Wireless Earbuds'];
+const productCategories = ['photography', 'electronics', 'electronics', 'fashion', 'art', 'electronics'];
+
+const products: Product[] = productNames.map((title, index) => ({
+  id: `prod-${index + 1}`,
+  title,
+  description: `Local demo catalogue item: ${title}.`,
+  price: 29 + index * 24,
+  category: productCategories[index],
+  images: [`https://picsum.photos/seed/product-${index + 1}/600/600`],
+}));
 
 export async function getAllProducts(): Promise<Product[]> {
-  if (cachedProducts) return cachedProducts;
-
-  try {
-    const res = await fetch('https://dummyjson.com/products?limit=100');
-    if (res.ok) {
-      const data = await res.json();
-      cachedProducts = data.products.map(
-        (p: { id: number; title: string; description: string; price: number; category: string; images?: string[] }) => ({
-          id: `prod-${p.id}`,
-          title: p.title,
-          description: p.description,
-          price: p.price,
-          category: p.category,
-          images: p.images && p.images.length > 0 ? p.images : [`https://picsum.photos/seed/prod-${p.id}/600/600`],
-        })
-      );
-      return cachedProducts || [];
-    }
-  } catch (error) {
-    console.error('Failed to load products:', error);
-  }
-
-  return [];
+  return products.map((product) => ({ ...product, images: [...product.images] }));
 }

@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getAuctions, placeBid, updateAuctionEndTime, Bid } from '@/lib/store';
+import { getAuctions, placeBid, Bid } from '@/lib/store';
 import { syncAndSimulateAuctions } from '@/lib/auction-engine';
 import { getCurrentUser } from '@/lib/auth';
 
@@ -14,9 +14,6 @@ export interface PlaceBidResponse {
   newEndTime?: string;
   timeExtended?: boolean;
 }
-
-const ANTI_SNIPE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes in milliseconds
-const EXTENSION_DURATION_MS = 2 * 60 * 1000; // Extend by 2 minutes
 
 export async function placeBidAction(
   auctionId: string,
@@ -54,29 +51,17 @@ export async function placeBidAction(
       };
     }
 
-    // 4. Anti-Sniping Check: Extend clock if bid occurs in final 2 minutes
-    const timeRemainingMs = auctionEndTime - currentServerTime;
-    let timeExtended = false;
-    let finalEndTimeISO = auction.endTime;
-
-    if (timeRemainingMs <= ANTI_SNIPE_WINDOW_MS) {
-      const newEndTimeMs = currentServerTime + EXTENSION_DURATION_MS;
-      finalEndTimeISO = new Date(newEndTimeMs).toISOString();
-
-      // Persist extended end time back to server memory
-      updateAuctionEndTime(auctionId, finalEndTimeISO);
-      timeExtended = true;
-    }
-
-    // 5. Place the bid
+    // 4. placeBid owns the anti-sniping rule, so every caller gets identical behavior.
+    const originalEndTime = auction.endTime;
     const updatedAuction = placeBid(
       auctionId,
       amount,
       currentUser.id,
       currentUser.name
     );
+    const timeExtended = updatedAuction.endTime !== originalEndTime;
 
-    // 6. Purge Next.js static cache so all users immediately see updated price/time
+    // 5. Purge Next.js static cache so all users immediately see updated price/time
     revalidatePath(`/auction/${auctionId}`);
     revalidatePath('/auctions');
     revalidatePath('/seller/dashboard');
@@ -90,7 +75,7 @@ export async function placeBidAction(
       highestBid: updatedAuction.currentHighestBid,
       bidsCount: updatedAuction.bidsCount,
       history: updatedAuction.history,
-      newEndTime: finalEndTimeISO,
+      newEndTime: updatedAuction.endTime,
       timeExtended,
     };
   } catch (error) {

@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Auction } from '@/lib/store';
+import { Auction, getAuctions, initializeStore } from '@/lib/store';
 import { useSearchParams } from 'next/navigation';
 
 interface Props {
@@ -24,6 +24,14 @@ export default function InfiniteAuctionGrid({ initialItems, initialNextCursor }:
     setNextCursor(initialNextCursor);
   }, [initialItems, initialNextCursor, searchParams]);
 
+  useEffect(() => {
+    initializeStore().then(() => {
+      const all = getAuctions({ category: searchParams.get('category') || undefined, status: searchParams.get('status') || undefined, search: searchParams.get('search') || undefined });
+      setItems(all.slice(0, 8));
+      setNextCursor(all.length > 8 ? all[7].id : null);
+    });
+  }, [searchParams]);
+
   const loadMore = useCallback(async () => {
     if (!nextCursor || loading) return;
 
@@ -33,11 +41,12 @@ export default function InfiniteAuctionGrid({ initialItems, initialNextCursor }:
     params.set('limit', '8');
 
     try {
-      const res = await fetch(`/api/auctions?${params.toString()}`);
-      const data = await res.json();
-
-      setItems((prev) => [...prev, ...(data.items || [])]);
-      setNextCursor(data.nextCursor || null);
+      await initializeStore();
+      const data = getAuctions({ category: params.get('category') || undefined, status: params.get('status') || undefined, search: params.get('search') || undefined });
+      const cursorIndex = data.findIndex((item) => item.id === nextCursor);
+      const more = data.slice(cursorIndex + 1, cursorIndex + 9);
+      setItems((prev) => [...prev, ...more]);
+      setNextCursor(cursorIndex + 9 < data.length ? more[more.length - 1]?.id || null : null);
     } catch (err) {
       console.error('Failed to load more auctions:', err);
     } finally {

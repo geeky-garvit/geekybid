@@ -3,13 +3,28 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { useAuth, MOCK_PROFILES, UserProfile } from '@/context/AuthContext';
+import { useAuth, PRESET_USERS, User } from '@/context/AuthContext';
 
 export default function UserSwitcherModal() {
   const { user, switchUser, logout } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [passkey, setPasskey] = useState('');
+  const [selectedProfile, setSelectedProfile] = useState<User | null>(null);
+  const [error, setError] = useState('');
 
-  const profilesList = MOCK_PROFILES || [];
+  const confirmSwitch = () => {
+    if (passkey !== 'ankur sir jindabad') {
+      setError('Incorrect passkey.');
+      return;
+    }
+    if (selectedProfile) switchUser(selectedProfile);
+    setSelectedProfile(null);
+    setPasskey('');
+    setError('');
+    setIsOpen(false);
+  };
+
+  const profilesList = PRESET_USERS;
 
   return (
     <div className="relative">
@@ -70,15 +85,12 @@ export default function UserSwitcherModal() {
 
             {/* Profile List */}
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {profilesList.map((profile: UserProfile) => {
+              {profilesList.map((profile: User) => {
                 const isActive = user?.id === profile.id;
                 return (
                   <button
                     key={profile.id}
-                    onClick={() => {
-                      switchUser(profile);
-                      setIsOpen(false);
-                    }}
+                    onClick={() => { if (!isActive) { setSelectedProfile(profile); setPasskey(''); setError(''); } }}
                     className={`w-full flex items-center justify-between p-2 rounded-xl transition text-left ${
                       isActive
                         ? 'bg-purple-50 border border-purple-200'
@@ -111,6 +123,26 @@ export default function UserSwitcherModal() {
                 );
               })}
             </div>
+
+            {selectedProfile && (
+              <div className="border border-purple-200 bg-purple-50 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-bold text-purple-950">Enter passkey to switch to {selectedProfile.name}</p>
+                <input
+                  type="password"
+                  autoFocus
+                  value={passkey}
+                  onChange={(event) => setPasskey(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === 'Enter') confirmSwitch(); }}
+                  placeholder="Passkey"
+                  className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                {error && <p className="text-[10px] font-semibold text-rose-600">{error}</p>}
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setSelectedProfile(null)} className="text-xs font-bold text-slate-500 px-2 py-1">Cancel</button>
+                  <button onClick={confirmSwitch} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-bold text-white">Unlock & Switch</button>
+                </div>
+              </div>
+            )}
 
             {/* Footer Action */}
             {user && (

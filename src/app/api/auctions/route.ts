@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getAuctions } from '@/lib/store';
+import { getAuctions, initializeStore } from '@/lib/store';
 
 export async function GET(request: Request) {
   try {
+    await initializeStore();
     const { searchParams } = new URL(request.url);
 
     const category = searchParams.get('category') || undefined;

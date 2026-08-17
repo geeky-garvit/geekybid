@@ -1,6 +1,7 @@
 // src/app/api/orders/route.ts
 import { NextResponse } from 'next/server';
 import { store, Order } from '@/lib/store';
+import { getCurrentUser } from '@/lib/auth';
 
 interface OrderItemInput {
   id: string;
@@ -18,19 +19,16 @@ export interface DetailedOrder extends Order {
   image?: string;
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    const allOrders = store.orders || [];
-
-    if (userId) {
-      const userOrders = allOrders.filter((order) => order.winnerId === userId);
-      return NextResponse.json({ orders: userOrders });
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    return NextResponse.json({ orders: allOrders });
+    return NextResponse.json({
+      orders: store.orders.filter((order) => order.winnerId === currentUser.id),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal Server Error' },
@@ -42,36 +40,44 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { userId, items, totalAmount } = body as {
-      userId?: string;
+    const { items } = body as {
       items?: OrderItemInput[];
-      totalAmount?: number;
     };
 
-    if (!userId || !items || !Array.isArray(items) || items.length === 0) {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
-        { error: 'Missing required parameters: userId and items' },
+        { error: 'Missing required parameter: items' },
         { status: 400 }
       );
     }
 
-    const calculatedTotal = items.reduce(
-      (acc, item) => acc + (item.price || 0) * (item.quantity || 1),
-      0
-    );
-
     const primaryItemId = items[0]?.id;
     const matchingAuction = store.auctions.find((a) => a.id === primaryItemId);
+    if (!matchingAuction) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
+    if (matchingAuction.status !== 'ended' || matchingAuction.history[0]?.bidderId !== currentUser.id) {
+      return NextResponse.json({ error: 'Only the auction winner can create an order' }, { status: 403 });
+    }
+    if (store.orders.some((order) => order.auctionId === primaryItemId)) {
+      return NextResponse.json({ error: 'An order already exists for this auction' }, { status: 409 });
+    }
+    const amount = Math.round((matchingAuction.currentHighestBid * 1.08 + 15) * 100) / 100;
 
     const newOrder: DetailedOrder = {
       id: `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       auctionId: primaryItemId || 'multi-item',
-      winnerId: userId,
-      amount: totalAmount !== undefined ? totalAmount : parseFloat(calculatedTotal.toFixed(2)),
+      winnerId: currentUser.id,
+      amount,
       isPaid: false,
       items,
-      itemTitle: matchingAuction?.title || items[0]?.title || `Auction Item #${primaryItemId}`,
-      image: matchingAuction?.images?.[0] || items[0]?.image || 'https://picsum.photos/600/600',
+      itemTitle: matchingAuction.title,
+      image: matchingAuction.images[0] || 'https://picsum.photos/600/600',
       createdAt: new Date().toISOString(),
     };
 

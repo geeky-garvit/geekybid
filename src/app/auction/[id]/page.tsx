@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, use, useCallback } from 'react';
 import Link from 'next/link';
-import { getAuctionById, initializeStore, Auction } from '@/lib/store';
-import { placeBidAction } from '@/app/actions/bid';
+import { getAuctionById, initializeStore, Auction, placeBid, subscribeToStore } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
+import { useNotifications } from '@/context/NotificationContext';
 import AuctionGallery from './components/AuctionGallery';
 import AuctionBiddingCard from './components/AuctionBiddingCard';
 import AuctionBidHistory, { Bid } from './components/AuctionBidHistory';
@@ -18,6 +18,7 @@ export default function AuctionDetailPage({
   const { id } = use(params);
   const { user, isWatchlisted, toggleWatchlist } = useAuth();
   const { addToCart } = useCart();
+  const { notify } = useNotifications();
 
   const [auction, setAuction] = useState<Auction | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
@@ -67,19 +68,11 @@ export default function AuctionDetailPage({
 
     loadAuctionData();
 
-    // Poll background sync endpoint every 3 seconds to keep bid history & counts updated
-    const pollInterval = setInterval(async () => {
-      try {
-        await fetch('/api/auctions/sync', { cache: 'no-store' });
-        if (isMounted) syncStoreData();
-      } catch {
-        // Silently skip failed poll requests
-      }
-    }, 3000);
+    const unsubscribe = subscribeToStore(syncStoreData);
 
     return () => {
       isMounted = false;
-      clearInterval(pollInterval);
+      unsubscribe();
     };
   }, [id, syncStoreData]);
 
@@ -114,11 +107,8 @@ export default function AuctionDetailPage({
       if (!auction || !user) return;
 
       try {
-        const response = await placeBidAction(auction.id, amount);
-        if (!response.success) {
-          alert(response.message);
-          return;
-        }
+        placeBid(auction.id, amount, user.id, user.name);
+        notify('Bid placed', `Your $${amount.toFixed(2)} bid on ${auction.title} was saved on this device.`);
         syncStoreData(); // Refresh page state immediately after store update
       } catch (err: unknown) {
         if (err instanceof Error) {
@@ -138,6 +128,7 @@ export default function AuctionDetailPage({
       image: auction.images[0],
       sellerName: auction.sellerName,
     });
+    notify('Added to cart', `${auction.title} is ready for checkout.`);
   }, [auction, addToCart]);
 
   if (loading) {

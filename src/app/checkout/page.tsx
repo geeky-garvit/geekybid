@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { getAuctions, Auction } from '@/lib/store';
+import { getAuctions, Auction, createOrder, initializeStore, markOrderPaid } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
 import OrderSuccessView from './components/OrderSuccessView';
 import CheckoutOrderSummary from './components/CheckoutOrderSummary';
@@ -32,6 +32,7 @@ export default function WinnerCheckoutPage({
   // Payment Webhook Simulation State
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
+  const [orderId, setOrderId] = useState<string | null>(null);
 
   // Sync user details when AuthContext resolves
   useEffect(() => {
@@ -42,8 +43,7 @@ export default function WinnerCheckoutPage({
 
   // Load auction listing state
   useEffect(() => {
-    const found = getAuctions().find((a) => a.id === auctionId);
-    setAuction(found);
+    initializeStore().then(() => setAuction(getAuctions().find((a) => a.id === auctionId)));
   }, [auctionId]);
 
   if (!auction) {
@@ -71,6 +71,7 @@ export default function WinnerCheckoutPage({
     e.preventDefault();
     setPaymentStatus('processing');
     setWebhookLogs([]);
+    let createdOrderId: string | null = null;
 
     const addLog = (event: string) => {
       const log: WebhookLog = {
@@ -93,27 +94,16 @@ export default function WinnerCheckoutPage({
       setPaymentStatus('webhook_received');
 
       if (user?.id) {
-        await fetch('/api/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: user.id,
-            items: [
-              {
-                id: auction.id,
-                title: auction.title,
-                price: winningBid,
-                quantity: 1,
-                image: auction.images[0],
-              },
-            ],
-            totalAmount: parseFloat(totalAmount.toFixed(2)),
-          }),
-        });
+        createdOrderId = createOrder(auction.id, user.id, totalAmount).id;
+        setOrderId(createdOrderId);
+      } else {
+        throw new Error('Authentication required to complete checkout.');
       }
 
       // Step 3: Webhook Payment Succeeded
       await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!createdOrderId) throw new Error('Order creation did not return an ID.');
+      markOrderPaid(createdOrderId);
       addLog('payment_intent.succeeded');
       setPaymentStatus('completed');
     } catch {
@@ -137,8 +127,9 @@ export default function WinnerCheckoutPage({
         </div>
       </div>
 
-      {paymentStatus === 'completed' ? (
+      {paymentStatus === 'completed' && orderId ? (
         <OrderSuccessView
+          orderId={orderId}
           fullName={fullName}
           address={address}
           city={city}

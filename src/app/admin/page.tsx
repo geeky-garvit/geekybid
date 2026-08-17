@@ -1,23 +1,22 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { store, initializeStore, Auction, Order } from '@/lib/store';
+import { store, initializeStore, Auction, Order, closeExpiredAuctions, deleteAuction, setOrderPaymentStatus, subscribeToStore } from '@/lib/store';
 import AdminMetrics from '../components/AdminMetrics';
 import AdminAuctionsTable from '../components/AdminAuctionsTable';
 import AdminOrdersTable from '../components/AdminOrdersTable';
-import {
-  adminCloseAuctionAction,
-  adminDeleteAuctionAction,
-  adminTogglePaymentStatusAction,
-} from '@/app/actions/auction';
 
 export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'auctions' | 'orders'>('auctions');
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [passkey, setPasskey] = useState('');
+  const [passkeyError, setPasskeyError] = useState('');
 
   useEffect(() => {
+    setAdminUnlocked(sessionStorage.getItem('geekybid_admin_unlocked') === 'true');
     async function loadAdminData() {
       await initializeStore();
       setAuctions([...store.auctions]);
@@ -25,38 +24,24 @@ export default function AdminDashboardPage() {
       setLoading(false);
     }
     loadAdminData();
+    return subscribeToStore(() => { setAuctions([...store.auctions]); setOrders([...store.orders]); });
   }, []);
 
-  const handleCloseAuction = useCallback(async (auctionId: string) => {
-    const res = await adminCloseAuctionAction(auctionId);
-    if (res.success) {
-      setAuctions((prev) =>
-        prev.map((item) => (item.id === auctionId ? { ...item, status: 'ended' } : item))
-      );
-    } else {
-      alert(res.error || 'Failed to close auction');
-    }
+  const handleCloseAuction = useCallback((auctionId: string) => {
+    const auction = store.auctions.find(item => item.id === auctionId);
+    if (auction) { auction.endTime = new Date().toISOString(); closeExpiredAuctions(); setAuctions([...store.auctions]); setOrders([...store.orders]); }
   }, []);
 
-  const handleDeleteAuction = useCallback(async (auctionId: string) => {
+  const handleDeleteAuction = useCallback((auctionId: string) => {
     if (!confirm('Are you sure you want to delete this auction listing?')) return;
-    const res = await adminDeleteAuctionAction(auctionId);
-    if (res.success) {
-      setAuctions((prev) => prev.filter((item) => item.id !== auctionId));
-    } else {
-      alert(res.error || 'Failed to delete auction');
-    }
+    deleteAuction(auctionId); setAuctions((prev) => prev.filter((item) => item.id !== auctionId));
   }, []);
 
-  const handleTogglePaymentStatus = useCallback(async (orderId: string) => {
-    const res = await adminTogglePaymentStatusAction(orderId);
-    if (res.success) {
-      setOrders((prev) =>
-        prev.map((order) => (order.id === orderId ? { ...order, isPaid: !order.isPaid } : order))
-      );
-    } else {
-      alert(res.error || 'Failed to toggle order status');
-    }
+  const handleTogglePaymentStatus = useCallback((orderId: string) => {
+    const order = store.orders.find(order => order.id === orderId);
+    if (!order) return;
+    setOrderPaymentStatus(orderId, !order.isPaid);
+    setOrders([...store.orders]); setAuctions([...store.auctions]);
   }, []);
 
   const totalRevenue = useMemo(
@@ -71,6 +56,10 @@ export default function AdminDashboardPage() {
     () => auctions.filter((auction) => auction.status === 'live').length,
     [auctions]
   );
+
+  if (!adminUnlocked) {
+    return <div className="max-w-md mx-auto px-4 py-20"><form onSubmit={(event) => { event.preventDefault(); if (passkey === 'ankur sir jindabad') { sessionStorage.setItem('geekybid_admin_unlocked', 'true'); setAdminUnlocked(true); } else setPasskeyError('Incorrect passkey.'); }} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-7 space-y-4"><div><h1 className="text-xl font-black text-slate-900">Admin access</h1><p className="text-xs text-slate-500 mt-1">Enter the passkey to open the admin console.</p></div><input type="password" autoFocus value={passkey} onChange={(event) => { setPasskey(event.target.value); setPasskeyError(''); }} placeholder="Passkey" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-600" />{passkeyError && <p className="text-xs font-semibold text-rose-600">{passkeyError}</p>}<button className="w-full rounded-xl bg-purple-600 py-2.5 text-xs font-bold text-white hover:bg-purple-700">Unlock Admin</button></form></div>;
+  }
 
   if (loading) {
     return (

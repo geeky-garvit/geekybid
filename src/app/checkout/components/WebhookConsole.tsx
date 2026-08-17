@@ -32,7 +32,7 @@ export default function WebhookConsole({ logs }: WebhookConsoleProps) {
                 <span className="text-emerald-400">STATUS 200 OK</span>
               </div>
               <div className="text-slate-200 bg-slate-800/80 p-2 rounded border border-slate-700/50">
-                <span className="text-amber-300">event:</span> "{log.event}"
+                <span className="text-amber-300">event:</span> &quot;{log.event}&quot;
               </div>
             </div>
           ))}

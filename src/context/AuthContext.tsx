@@ -93,20 +93,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoaded(true);
   }, []);
 
-  const login = (newUser: User) => {
-  setUser(newUser);
-  localStorage.setItem('geekybid_user', JSON.stringify(newUser));
-  // Sync with server cookie for Server Actions / API routes
-  document.cookie = `user_session=${encodeURIComponent(JSON.stringify(newUser))}; path=/; max-age=86400; SameSite=Lax`;
-  loadUserWatchlist(newUser.id);
-};
+  // Server Actions read the same mock session from a cookie. Keeping this in a
+  // separate effect avoids coupling browser persistence to state initialization.
+  useEffect(() => {
+    if (user) {
+      document.cookie = `user_session=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=86400; SameSite=Lax`;
+    }
+  }, [user]);
 
-const logout = () => {
-  setUser(null);
-  setWatchlist([]);
-  localStorage.removeItem('geekybid_user');
-  document.cookie = 'user_session=; path=/; max-age=0;';
-};
+  const login = (newUser: User) => {
+    setUser(newUser);
+    localStorage.setItem('geekybid_user', JSON.stringify(newUser));
+    loadUserWatchlist(newUser.id);
+  };
+
+  const logout = () => {
+    setUser(null);
+    setWatchlist([]);
+    localStorage.removeItem('geekybid_user');
+    document.cookie = 'user_session=; path=/; max-age=0;';
+  };
 
   const toggleWatchlist = (auctionId: string) => {
     if (!user) return;

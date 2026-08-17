@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
-import { getAuctions, Auction } from '@/lib/store';
+import { getAuctions, Auction, initializeStore, subscribeToStore } from '@/lib/store';
 import { useState, useEffect } from 'react';
 
 export default function WatchlistPage() {
@@ -13,10 +13,13 @@ export default function WatchlistPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const allAuctions = getAuctions();
-    const filtered = allAuctions.filter((item) => watchlist.includes(item.id));
-    setSavedAuctions(filtered);
-    setIsLoading(false);
+    const refresh = () => {
+      const allAuctions = getAuctions();
+      setSavedAuctions(allAuctions.filter((item) => watchlist.includes(item.id)));
+      setIsLoading(false);
+    };
+    initializeStore().then(refresh);
+    return subscribeToStore(refresh);
   }, [watchlist]);
 
   if (isLoading) {

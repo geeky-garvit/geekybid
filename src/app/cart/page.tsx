@@ -4,11 +4,14 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
+import { createOrder } from '@/lib/store';
+import { useNotifications } from '@/context/NotificationContext';
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { cart, subtotal, clearCart } = useCart();
+  const { notify } = useNotifications();
 
   const [loading, setLoading] = useState(false);
   const [shippingInfo, setShippingInfo] = useState({
@@ -36,23 +39,8 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      // 1. Create Order via POST /api/orders
-      const orderRes = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id,
-          items: cart,
-          totalAmount,
-          shippingInfo,
-        }),
-      });
-
-      const orderData = await orderRes.json();
-
-      if (!orderRes.ok) {
-        throw new Error(orderData.error || 'Failed to place order.');
-      }
+      cart.forEach((item) => createOrder(item.id, user.id, item.price * item.quantity));
+      notify('Order placed', `${cart.length} item${cart.length === 1 ? '' : 's'} added to your local order history.`);
 
       // 2. Clear Cart & Redirect to Orders Page
       clearCart();

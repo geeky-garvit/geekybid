@@ -4,9 +4,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
+import UserSwitcherModal from './UserSwitcherModal';
+import NotificationMenu from './NotificationMenu';
 
 export default function Navbar() {
-  const { user, watchlist, login, logout, presetUsers } = useAuth();
+  const { user, watchlist, login, presetUsers } = useAuth();
   const { cartCount } = useCart();
 
   return (
@@ -58,13 +60,15 @@ export default function Navbar() {
                 </div>
                 <span className="text-xs font-bold text-slate-800">{user.name}</span>
               </div>
-              <button
-                onClick={logout}
-                className="text-xs font-semibold text-slate-400 hover:text-slate-700"
-              >
-                Logout
-              </button>
-              <Link href="/admin" className="hover:text-purple-600 transition flex items-center gap-1">
+              <UserSwitcherModal />
+              <NotificationMenu />
+              <Link href="/admin" onClick={(event) => {
+                if (sessionStorage.getItem('geekybid_admin_unlocked') === 'true') return;
+                const passkey = window.prompt('Enter admin passkey');
+                if (passkey === 'ankur sir jindabad') { sessionStorage.setItem('geekybid_admin_unlocked', 'true'); return; }
+                event.preventDefault();
+                if (passkey !== null) alert('Incorrect passkey.');
+              }} className="hover:text-purple-600 transition flex items-center gap-1">
    Admin
 </Link>
             </div>

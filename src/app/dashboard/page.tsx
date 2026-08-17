@@ -1,15 +1,17 @@
 // src/app/dashboard/page.tsx
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { getAuctionsBySeller, getBidsByUser } from '@/lib/store';
+import { getAuctionsBySeller, getBidsByUser, getOrdersByUser, initializeStore, subscribeToStore } from '@/lib/store';
 import AuctionCard from '@/app/components/auction/AuctionCard';
 import Image from 'next/image';
 import Link from 'next/link';
 
 export default function UserDashboardPage() {
   const { user } = useAuth();
+  const [, setVersion] = useState(0);
+  useEffect(() => { initializeStore().then(() => setVersion((version) => version + 1)); return subscribeToStore(() => setVersion((version) => version + 1)); }, []);
 
   if (!user) {
     return (
@@ -22,6 +24,9 @@ export default function UserDashboardPage() {
 
   const myListings = getAuctionsBySeller(user.id);
   const myBids = getBidsByUser(user.id);
+  const myOrders = getOrdersByUser(user.id);
+  const activeBids = myBids.filter(({ auction }) => auction.status === 'live').length;
+  const amountCommitted = myBids.reduce((total, { userBids }) => total + (userBids[0]?.amount || 0), 0);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-10">
@@ -36,6 +41,15 @@ export default function UserDashboardPage() {
           <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
         </div>
       </div>
+
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          ['Live listings', myListings.filter((auction) => auction.status === 'live').length],
+          ['Active bids', activeBids],
+          ['Orders won', myOrders.length],
+          ['Bid value', `$${amountCommitted.toFixed(2)}`],
+        ].map(([label, value]) => <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 text-xl font-black text-purple-950">{value}</p></div>)}
+      </section>
 
       {/* User Created Auctions */}
       <section className="space-y-4">

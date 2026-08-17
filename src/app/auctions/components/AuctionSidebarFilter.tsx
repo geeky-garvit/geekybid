@@ -77,7 +77,7 @@ export default function AuctionHorizontalFilter({
   ].filter(Boolean).length;
 
   return (
-    <div className="w-full bg-white border border-slate-200/80 rounded-2xl p-4 md:p-5 shadow-sm space-y-4 h-[50vh] ">
+    <div className="w-full bg-white border border-slate-200/80 rounded-2xl p-4 md:p-5 shadow-sm space-y-4 h-[25vh] ">
       {/* Top Header Row */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
         <div className="flex items-center gap-2">

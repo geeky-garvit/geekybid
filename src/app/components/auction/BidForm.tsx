@@ -1,10 +1,9 @@
 // components/auction/BidForm.tsx
 'use client';
 
-import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import { placeBidAction } from '@/app/actions/bid';
-import { Bid } from '@/lib/store';
+import { useState } from 'react';
+import { Bid, placeBid } from '@/lib/store';
+import { useAuth } from '@/context/AuthContext';
 
 interface Props {
   auctionId: string;
@@ -21,8 +20,8 @@ export default function BidForm({
   initialBidsCount,
   initialHistory,
 }: Props) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const { user } = useAuth();
+  const [isPending, setIsPending] = useState(false);
 
   const [highestBid, setHighestBid] = useState(initialHighestBid);
   const [bidsCount, setBidsCount] = useState(initialBidsCount);
@@ -41,23 +40,19 @@ export default function BidForm({
     e.preventDefault();
     setStatus(null);
 
-    startTransition(async () => {
-      const res = await placeBidAction(auctionId, amount);
-
-      if (res.success && res.highestBid !== undefined && res.bidsCount !== undefined) {
+    if (!user) return setStatus({ success: false, text: 'Select a profile before bidding.' });
+    setIsPending(true);
+    try {
+      const updated = placeBid(auctionId, amount, user.id, user.name);
         // Direct local state sync
-        setHighestBid(res.highestBid);
-        setBidsCount(res.bidsCount);
-        if (res.history) setHistory(res.history);
-        setAmount(res.highestBid + minIncrement);
-        setStatus({ success: true, text: res.message });
-
-        // Tell Next.js to refresh server components
-        router.refresh();
-      } else {
-        setStatus({ success: false, text: res.message });
-      }
-    });
+      setHighestBid(updated.currentHighestBid);
+      setBidsCount(updated.bidsCount);
+      setHistory(updated.history);
+      setAmount(updated.currentHighestBid + minIncrement);
+      setStatus({ success: true, text: 'Bid placed successfully.' });
+    } catch (error) {
+      setStatus({ success: false, text: error instanceof Error ? error.message : 'Unable to place bid.' });
+    } finally { setIsPending(false); }
   };
 
   return (

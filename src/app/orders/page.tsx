@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import OrderCard, { Order } from './components/OrderCard';
+import { getOrdersByUser, initializeStore, subscribeToStore } from '@/lib/store';
 
 export default function OrdersPage() {
   const { user } = useAuth();
@@ -20,26 +21,14 @@ export default function OrdersPage() {
 
     let isMounted = true;
 
-    async function fetchOrders() {
-      try {
-        const res = await fetch(`/api/orders?userId=${userId}`);
-        const data = await res.json();
-        if (isMounted) {
-          setOrders(data.orders || []);
-        }
-      } catch (err) {
-        console.error('Failed fetching orders:', err);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    }
+    async function fetchOrders() { await initializeStore(); if (isMounted) { setOrders(getOrdersByUser(userId!)); setLoading(false); } }
 
     fetchOrders();
 
+    const unsubscribe = subscribeToStore(() => setOrders(getOrdersByUser(userId!)));
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, [userId]);
 
