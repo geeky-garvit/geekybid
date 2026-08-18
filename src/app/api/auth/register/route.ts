@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findUserByEmail, createUser } from '@/lib/users';
 
+export const dynamic = 'force-dynamic'; // Ensures route isn't evaluated at build time
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -13,8 +15,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user already exists
-    const existingUser = await findUserByEmail(email);
+    // Sanitize input
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check existing user
+    const existingUser = await findUserByEmail(cleanEmail);
     if (existingUser) {
       return NextResponse.json(
         { success: false, message: 'An account with this email/username already exists.' },
@@ -25,8 +30,8 @@ export async function POST(request: NextRequest) {
     const newUser = await createUser({
       id: `user_${Date.now()}`,
       name,
-      email: email.toLowerCase().trim(),
-      password, // Note: Hash with bcrypt in production
+      email: cleanEmail,
+      password,
       avatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
       role: 'user',
     });
@@ -42,11 +47,11 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('Registration Route Error:', error);
+    console.error('PROD Registration Error Log:', error);
     return NextResponse.json(
       {
         success: false,
-        message: error.message || 'Internal server error while creating account.',
+        message: error?.message || 'Server error during account creation.',
       },
       { status: 500 }
     );
