@@ -6,12 +6,8 @@ import { ObjectId } from 'mongodb';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest) {
   try {
-    const auctionId = params.id;
     const token = request.cookies.get('token')?.value;
 
     if (!token) {
@@ -34,14 +30,15 @@ export async function POST(
 
     // 2. Validate Request Body
     const body = await request.json().catch(() => null);
-    if (!body || typeof body.amount !== 'number' || body.amount <= 0) {
+    const { auctionId, amount } = body || {};
+
+    if (!auctionId || typeof amount !== 'number' || amount <= 0) {
       return NextResponse.json(
-        { success: false, message: 'Invalid bid amount.' },
+        { success: false, message: 'Invalid bid data. auctionId and a positive amount are required.' },
         { status: 400 }
       );
     }
 
-    const newBidAmount = body.amount;
     const client = await clientPromise;
     const db = client.db(process.env.MONGODB_DB || 'auctions_db');
 
@@ -69,7 +66,7 @@ export async function POST(
     }
 
     const currentPrice = auction.currentPrice || auction.startingBid || 0;
-    if (newBidAmount <= currentPrice) {
+    if (amount <= currentPrice) {
       return NextResponse.json(
         {
           success: false,
@@ -91,7 +88,7 @@ export async function POST(
       auctionId: auction.id || auction._id.toString(),
       userId: userDoc.id,
       userName: userDoc.name,
-      amount: newBidAmount,
+      amount,
       timestamp: new Date(),
     };
 
@@ -100,7 +97,7 @@ export async function POST(
     // 6. Update Auction's Current Price & Highest Bidder
     await db.collection('auctions').updateOne(auctionQuery, {
       $set: {
-        currentPrice: newBidAmount,
+        currentPrice: amount,
         highestBidderId: userDoc.id,
         highestBidderName: userDoc.name,
         updatedAt: new Date(),
@@ -112,14 +109,14 @@ export async function POST(
       userId: userDoc.id,
       action: 'BID_PLACED',
       auctionId: auction.id || auction._id.toString(),
-      amount: newBidAmount,
-      details: `Placed a bid of $${newBidAmount.toLocaleString()} on "${auction.title || 'Auction Item'}"`,
+      amount,
+      details: `Placed a bid of $${amount.toLocaleString()} on "${auction.title || 'Auction Item'}"`,
     });
 
     return NextResponse.json({
       success: true,
       message: 'Bid placed successfully!',
-      currentPrice: newBidAmount,
+      currentPrice: amount,
     });
   } catch (error: any) {
     console.error('Bidding Error:', error);

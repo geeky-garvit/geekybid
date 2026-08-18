@@ -15,7 +15,9 @@ export default function AuctionDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
+  const resolvedParams = use(params);
+  const id = resolvedParams.id;
+
   const { user, isWatchlisted, toggleWatchlist } = useAuth();
   const { addToCart } = useCart();
   const { notify } = useNotifications();
@@ -101,7 +103,7 @@ export default function AuctionDetailPage({
     return () => clearInterval(timer);
   }, [auction]);
 
-  // 4. Place bid via Server Action for proper synchronization
+  // 4. Place bid handling
   const handlePlaceBid = useCallback(
     async (amount: number) => {
       if (!auction || !user) return;
@@ -109,14 +111,14 @@ export default function AuctionDetailPage({
       try {
         placeBid(auction.id, amount, user.id, user.name);
         notify('Bid placed', `Your $${amount.toFixed(2)} bid on ${auction.title} was saved on this device.`);
-        syncStoreData(); // Refresh page state immediately after store update
+        syncStoreData();
       } catch (err: unknown) {
         if (err instanceof Error) {
           alert(err.message);
         }
       }
     },
-    [auction, user, syncStoreData]
+    [auction, user, syncStoreData, notify]
   );
 
   const handleAddToCart = useCallback(() => {
@@ -129,7 +131,7 @@ export default function AuctionDetailPage({
       sellerName: auction.sellerName,
     });
     notify('Added to cart', `${auction.title} is ready for checkout.`);
-  }, [auction, addToCart]);
+  }, [auction, addToCart, notify]);
 
   if (loading) {
     return (
