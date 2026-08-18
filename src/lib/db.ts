@@ -1,146 +1,260 @@
-import clientPromise from '@/lib/mongodb';
+import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import bcrypt from 'bcryptjs';
 
-const DB_NAME = process.env.MONGODB_DB || 'auctions_db';
+// Global Prisma Singleton to prevent connection leaks during Next.js HMR
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
-// ---------------- USER SCHEMAS & OPERATIONS ----------------
+const dbUrl = process.env.DATABASE_URL || 'file:./dev.db';
+const adapter = new PrismaBetterSqlite3({ url: dbUrl });
+
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  });
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+// ---------------- HELPER UTILITIES ----------------
+
+/**
+ * Parses JSON image strings stored in SQLite into string arrays.
+ */
+export function parseAuctionImages(imagesJson: string | null | undefined): string[] {
+  if (!imagesJson) return [];
+  try {
+    const parsed = JSON.parse(imagesJson);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Serializes string arrays into JSON strings for SQLite storage.
+ */
+export function serializeAuctionImages(images: string[]): string {
+  return JSON.stringify(images || []);
+}
+
+// ---------------- USER OPERATIONS ----------------
 
 export interface UserDoc {
   id: string;
   name: string;
   email: string;
   passwordHash: string;
-  avatar: string;
-  role: 'user' | 'admin';
+  avatar: string | null;
+  role: string;
   createdAt: Date;
 }
 
-export async function findUserByEmail(email: string): Promise<UserDoc | null> {
-  const client = await clientPromise;
-  const db = client.db(DB_NAME);
-  return await db.collection<UserDoc>('users').findOne({ email: email.toLowerCase().trim() });
+export async function findUserByEmail(email: string) {
+  const cleanEmail = email.toLowerCase().trim();
+  const user = await prisma.user.findUnique({
+    where: { email: cleanEmail },
+  });
+
+  if (!user) return null;
+
+  return {
+    ...user,
+    passwordHash: user.password,
+  };
 }
 
 export async function createUser(data: { name: string; email: string; passwordRaw: string }) {
-  const client = await clientPromise;
-  const db = client.db(DB_NAME);
-
   const cleanEmail = data.email.toLowerCase().trim();
-  const existingUser = await db.collection<UserDoc>('users').findOne({ email: cleanEmail });
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email: cleanEmail },
+  });
 
   if (existingUser) {
     throw new Error('User already exists with this email.');
   }
 
   const passwordHash = await bcrypt.hash(data.passwordRaw, 10);
-  const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const avatarUrl = `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(
+    data.name.trim()
+  )}`;
 
-  const newUser: UserDoc = {
-    id: userId,
-    name: data.name.trim(),
-    email: cleanEmail,
-    passwordHash,
-    avatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(data.name)}`,
-    role: 'user',
-    createdAt: new Date(),
-  };
+  const newUser = await prisma.user.create({
+    data: {
+      name: data.name.trim(),
+      email: cleanEmail,
+      password: passwordHash,
+      avatar: avatarUrl,
+      role: 'collector',
+    },
+  });
 
-  // 1. Store User in MongoDB
-  await db.collection<UserDoc>('users').insertOne(newUser);
-
-  // 2. Log Account Creation Activity
   await logUserActivity({
-    userId,
+    userId: newUser.id,
     action: 'USER_REGISTERED',
     details: 'User created an account on GeekyBid',
   });
 
-  const { passwordHash: _, ...safeUser } = newUser;
+  const { password: _, ...safeUser } = newUser;
   return safeUser;
+}
+
+// ---------------- AUCTION OPERATIONS ----------------
+
+export interface CreateAuctionInput {
+  title: string;
+  description: string;
+  category: string;
+  startingBid: number;
+  minIncrement?: number;
+  images: string[];
+  attributes?: Record<string, unknown>;
+  endTime: Date;
+  sellerId: string;
+}
+
+export async function createAuction(input: CreateAuctionInput) {
+  const newAuction = await prisma.auction.create({
+    data: {
+      title: input.title.trim(),
+      description: input.description.trim(),
+      category: input.category.trim(),
+      startingBid: input.startingBid,
+      currentPrice: input.startingBid,
+      minIncrement: input.minIncrement ?? 5.0,
+      images: serializeAuctionImages(input.images),
+      attributes: (input.attributes as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+      endTime: input.endTime,
+      sellerId: input.sellerId,
+    },
+  });
+
+  await logUserActivity({
+    userId: input.sellerId,
+    action: 'AUCTION_CREATED',
+    auctionId: newAuction.id,
+    amount: input.startingBid,
+    details: `Created auction: ${newAuction.title}`,
+  });
+
+  return {
+    ...newAuction,
+    images: parseAuctionImages(newAuction.images),
+  };
+}
+
+export async function getAuctionById(id: string) {
+  const auction = await prisma.auction.findUnique({
+    where: { id },
+    include: {
+      seller: {
+        select: { id: true, name: true, avatar: true },
+      },
+      bids: {
+        orderBy: { timestamp: 'desc' },
+        include: {
+          user: { select: { id: true, name: true, avatar: true } },
+        },
+      },
+    },
+  });
+
+  if (!auction) return null;
+
+  return {
+    ...auction,
+    images: parseAuctionImages(auction.images),
+  };
+}
+
+export async function getActiveAuctions(category?: string) {
+  const auctions = await prisma.auction.findMany({
+    where: {
+      status: 'ACTIVE',
+      ...(category ? { category } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      seller: {
+        select: { id: true, name: true, avatar: true },
+      },
+    },
+  });
+
+  return auctions.map((auction: (typeof auctions)[number]) => ({
+    ...auction,
+    images: parseAuctionImages(auction.images),
+  }));
 }
 
 // ---------------- ACTIVITY LOGGING OPERATIONS ----------------
 
-export interface ActivityDoc {
+export interface ActivityInput {
   userId: string;
   action: 'USER_REGISTERED' | 'USER_LOGGED_IN' | 'BID_PLACED' | 'AUCTION_CREATED' | 'AUCTION_WON';
   auctionId?: string;
   amount?: number;
   details?: string;
-  timestamp: Date;
 }
 
-export async function logUserActivity(activity: Omit<ActivityDoc, 'timestamp'>) {
+export async function logUserActivity(activity: ActivityInput) {
   try {
-    const client = await clientPromise;
-    const db = client.db(DB_NAME);
-
-    await db.collection<ActivityDoc>('activity').insertOne({
-      ...activity,
-      timestamp: new Date(),
+    return await prisma.activity.create({
+      data: {
+        userId: activity.userId,
+        action: activity.action,
+        details: activity.details,
+        amount: activity.amount,
+      },
     });
   } catch (err) {
-    console.error('Failed to log activity:', err);
+    console.error('Failed to log activity to SQL:', err);
   }
 }
 
 export async function getUserActivityHistory(userId: string) {
-  const client = await clientPromise;
-  const db = client.db(DB_NAME);
-
-  return await db.collection<ActivityDoc>('activity')
-    .find({ userId })
-    .sort({ timestamp: -1 })
-    .limit(50)
-    .toArray();
+  return await prisma.activity.findMany({
+    where: { userId },
+    orderBy: { timestamp: 'desc' },
+    take: 50,
+  });
 }
 
 // ---------------- SELLER COMMUNITY CREATION ----------------
 
-export interface CommunityDoc {
-  communityId: string;
-  sellerId: string;
-  title: string;
-  createdAt: Date;
-}
-
 export async function createSellerCommunity(sellerId: string, title: string) {
   try {
-    const client = await clientPromise;
-    const db = client.db(DB_NAME);
-
     const communityId = `comm_${sellerId}`;
 
-    const newCommunity: CommunityDoc = {
-      communityId,
-      sellerId,
-      title,
-      createdAt: new Date(),
-    };
+    const community = await prisma.community.upsert({
+      where: { id: communityId },
+      update: {},
+      create: {
+        id: communityId,
+        sellerId,
+        title,
+      },
+    });
 
-    // Upsert so a user only gets one primary community hub
-    await db.collection<CommunityDoc>('communities').updateOne(
-      { sellerId },
-      { $setOnInsert: newCommunity },
-      { upsert: true }
-    );
-
-    // Add seller as the owner/member of their own community
-    await db.collection('community_members').updateOne(
-      { communityId, userId: sellerId },
-      {
-        $setOnInsert: {
+    await prisma.communityMember.upsert({
+      where: {
+        communityId_userId: {
           communityId,
           userId: sellerId,
-          role: 'SELLER',
-          joinedAt: new Date(),
         },
       },
-      { upsert: true }
-    );
+      update: {},
+      create: {
+        communityId,
+        userId: sellerId,
+        role: 'SELLER',
+      },
+    });
 
-    return communityId;
+    return community.id;
   } catch (err) {
-    console.error('Failed to create seller community:', err);
+    console.error('Failed to create seller community in SQL:', err);
   }
 }

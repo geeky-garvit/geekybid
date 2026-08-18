@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import clientPromise from '@/lib/mongodb';
-import { findUserByEmail, logUserActivity } from '@/lib/db';
-import { ObjectId } from 'mongodb';
+import { prisma, logUserActivity } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,43 +10,39 @@ export async function POST(request: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        { success: false, message: 'Unauthorized. Please sign in to place a bid.' },
+        { success: false, message: 'Unauthorized. Please sign in.' },
         { status: 401 }
       );
     }
 
     // 1. Verify User Session
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as any;
-    const userDoc = await findUserByEmail(decoded.email);
+    const user = await prisma.user.findUnique({
+      where: { email: decoded.email },
+    });
 
-    if (!userDoc) {
+    if (!user) {
       return NextResponse.json(
         { success: false, message: 'User account not found.' },
         { status: 404 }
       );
     }
 
-    // 2. Validate Request Body
+    // 2. Validate Body
     const body = await request.json().catch(() => null);
     const { auctionId, amount } = body || {};
 
     if (!auctionId || typeof amount !== 'number' || amount <= 0) {
       return NextResponse.json(
-        { success: false, message: 'Invalid bid data. auctionId and a positive amount are required.' },
+        { success: false, message: 'Invalid auctionId or bid amount.' },
         { status: 400 }
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db(process.env.MONGODB_DB || 'auctions_db');
-
-    // 3. Fetch Auction Details
-    let auctionQuery: any = { id: auctionId };
-    if (ObjectId.isValid(auctionId)) {
-      auctionQuery = { $or: [{ id: auctionId }, { _id: new ObjectId(auctionId) }] };
-    }
-
-    const auction = await db.collection('auctions').findOne(auctionQuery);
+    // 3. Fetch Auction from SQL
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId },
+    });
 
     if (!auction) {
       return NextResponse.json(
@@ -57,60 +51,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Validate Bid Conditions
-    if (auction.sellerId === userDoc.id) {
+    if (auction.sellerId === user.id) {
       return NextResponse.json(
         { success: false, message: 'You cannot bid on your own auction.' },
         { status: 400 }
       );
     }
 
-    const currentPrice = auction.currentPrice || auction.startingBid || 0;
-    if (amount <= currentPrice) {
+    if (amount <= auction.currentPrice) {
       return NextResponse.json(
         {
           success: false,
-          message: `Bid must be higher than current price of $${currentPrice.toLocaleString()}.`,
+          message: `Bid must be higher than current price of $${auction.currentPrice.toLocaleString()}.`,
         },
         { status: 400 }
       );
     }
 
-    if (auction.status && auction.status !== 'ACTIVE') {
-      return NextResponse.json(
-        { success: false, message: 'This auction is no longer active.' },
-        { status: 400 }
-      );
-    }
+    // 4. Atomic SQL Transaction (Record Bid + Update Auction Price + Log Activity)
+    const [bid] = await prisma.$transaction([
+      prisma.bid.create({
+        data: {
+          amount,
+          auctionId: auction.id,
+          userId: user.id,
+        },
+      }),
+      prisma.auction.update({
+        where: { id: auction.id },
+        data: {
+          currentPrice: amount,
+          highestBidderId: user.id,
+        },
+      }),
+    ]);
 
-    // 5. Save Bid Document
-    const bidDoc = {
-      auctionId: auction.id || auction._id.toString(),
-      userId: userDoc.id,
-      userName: userDoc.name,
-      amount,
-      timestamp: new Date(),
-    };
-
-    await db.collection('bids').insertOne(bidDoc);
-
-    // 6. Update Auction's Current Price & Highest Bidder
-    await db.collection('auctions').updateOne(auctionQuery, {
-      $set: {
-        currentPrice: amount,
-        highestBidderId: userDoc.id,
-        highestBidderName: userDoc.name,
-        updatedAt: new Date(),
-      },
-    });
-
-    // 7. Log Activity in MongoDB
     await logUserActivity({
-      userId: userDoc.id,
+      userId: user.id,
       action: 'BID_PLACED',
-      auctionId: auction.id || auction._id.toString(),
       amount,
-      details: `Placed a bid of $${amount.toLocaleString()} on "${auction.title || 'Auction Item'}"`,
+      details: `Placed bid of $${amount} on "${auction.title}"`,
     });
 
     return NextResponse.json({
@@ -119,7 +99,7 @@ export async function POST(request: NextRequest) {
       currentPrice: amount,
     });
   } catch (error: any) {
-    console.error('Bidding Error:', error);
+    console.error('SQL Bidding Error:', error);
     return NextResponse.json(
       { success: false, message: error?.message || 'Failed to place bid.' },
       { status: 500 }

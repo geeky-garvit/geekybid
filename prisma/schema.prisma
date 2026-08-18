@@ -1,13 +1,94 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
-generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+datasource db {
+  provider = "postgresql"
 }
 
-datasource db {
-  provider = "sqlite"
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               String            @id @default(uuid())
+  name             String
+  email            String            @unique
+  password         String
+  avatar           String?
+  role             String            @default("collector")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  auctions         Auction[]         @relation("SellerAuctions")
+  bids             Bid[]
+  activities       Activity[]
+  ownedCommunity   Community?
+  communityMembers CommunityMember[]
+}
+
+model Auction {
+  id              String   @id @default(uuid())
+  title           String
+  description     String
+  category        String
+  startingBid     Float
+  currentPrice    Float
+  minIncrement    Float    @default(5.0)
+  status          String   @default("ACTIVE") // ACTIVE, ENDED, PAID
+  images          String   // Stored as JSON stringified array for cross-DB compatibility
+  attributes      Json?    // Stores dynamic spec key-values per item
+  endTime         DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sellerId        String
+  seller          User     @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
+  highestBidderId String?
+
+  bids            Bid[]
+}
+
+model Bid {
+  id        String   @id @default(uuid())
+  amount    Float
+  timestamp DateTime @default(now())
+
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Activity {
+  id        String   @id @default(uuid())
+  action    String   // e.g., USER_REGISTERED, BID_PLACED, AUCTION_CREATED
+  details   String?
+  amount    Float?
+  timestamp DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Community {
+  id        String            @id
+  title     String
+  createdAt DateTime          @default(now())
+
+  sellerId  String            @unique
+  seller    User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  members   CommunityMember[]
+}
+
+model CommunityMember {
+  id          String    @id @default(uuid())
+  role        String    @default("MEMBER") // SELLER, MEMBER
+  joinedAt    DateTime  @default(now())
+
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
 }
