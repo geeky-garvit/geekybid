@@ -105,9 +105,7 @@ export default async function HomePage() {
       {/* Hero Banner */}
       <section className="bg-gradient-to-b from-purple-900 via-purple-950 to-slate-900 text-white py-16 px-4">
         <div className="max-w-5xl mx-auto text-center space-y-4">
-          <span className="px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-400/30 rounded-full text-xs font-bold uppercase tracking-wider inline-block">
-            Live eBay-Style Auctions
-          </span>
+          
           <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-tight">
             Bid in Real-Time. <br />
             <span className="text-purple-400">Win Rare Items Today.</span>
