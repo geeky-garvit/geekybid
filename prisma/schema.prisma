@@ -32,8 +32,8 @@ model Auction {
   currentPrice    Float
   minIncrement    Float    @default(5.0)
   status          String   @default("ACTIVE") // ACTIVE, ENDED, PAID
-  images          String   // Stored as JSON stringified array for cross-DB compatibility
-  attributes      Json?    // Stores dynamic spec key-values per item
+  images          String[]
+  attributes      Json?
   endTime         DateTime
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -59,7 +59,7 @@ model Bid {
 
 model Activity {
   id        String   @id @default(uuid())
-  action    String   // e.g., USER_REGISTERED, BID_PLACED, AUCTION_CREATED
+  action    String
   details   String?
   amount    Float?
   timestamp DateTime @default(now())
@@ -81,7 +81,7 @@ model Community {
 
 model CommunityMember {
   id          String    @id @default(uuid())
-  role        String    @default("MEMBER") // SELLER, MEMBER
+  role        String    @default("MEMBER")
   joinedAt    DateTime  @default(now())
 
   communityId String

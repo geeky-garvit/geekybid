@@ -1,12 +1,13 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaNeon } from '@prisma/adapter-neon';
+import { Pool } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
 
-// Global Prisma Singleton to prevent connection leaks during Next.js HMR
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
-const dbUrl = process.env.DATABASE_URL || 'file:./dev.db';
-const adapter = new PrismaBetterSqlite3({ url: dbUrl });
+const connectionString = process.env.DATABASE_URL!;
+const pool = new Pool({ connectionString });
+const adapter = new PrismaNeon(pool);
 
 export const prisma =
   globalForPrisma.prisma ||
@@ -16,28 +17,6 @@ export const prisma =
   });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-
-// ---------------- HELPER UTILITIES ----------------
-
-/**
- * Parses JSON image strings stored in SQLite into string arrays.
- */
-export function parseAuctionImages(imagesJson: string | null | undefined): string[] {
-  if (!imagesJson) return [];
-  try {
-    const parsed = JSON.parse(imagesJson);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Serializes string arrays into JSON strings for SQLite storage.
- */
-export function serializeAuctionImages(images: string[]): string {
-  return JSON.stringify(images || []);
-}
 
 // ---------------- USER OPERATIONS ----------------
 
@@ -124,7 +103,7 @@ export async function createAuction(input: CreateAuctionInput) {
       startingBid: input.startingBid,
       currentPrice: input.startingBid,
       minIncrement: input.minIncrement ?? 5.0,
-      images: serializeAuctionImages(input.images),
+      images: input.images,
       attributes: (input.attributes as Prisma.InputJsonValue) ?? Prisma.JsonNull,
       endTime: input.endTime,
       sellerId: input.sellerId,
@@ -139,14 +118,11 @@ export async function createAuction(input: CreateAuctionInput) {
     details: `Created auction: ${newAuction.title}`,
   });
 
-  return {
-    ...newAuction,
-    images: parseAuctionImages(newAuction.images),
-  };
+  return newAuction;
 }
 
 export async function getAuctionById(id: string) {
-  const auction = await prisma.auction.findUnique({
+  return await prisma.auction.findUnique({
     where: { id },
     include: {
       seller: {
@@ -160,17 +136,10 @@ export async function getAuctionById(id: string) {
       },
     },
   });
-
-  if (!auction) return null;
-
-  return {
-    ...auction,
-    images: parseAuctionImages(auction.images),
-  };
 }
 
 export async function getActiveAuctions(category?: string) {
-  const auctions = await prisma.auction.findMany({
+  return await prisma.auction.findMany({
     where: {
       status: 'ACTIVE',
       ...(category ? { category } : {}),
@@ -182,11 +151,6 @@ export async function getActiveAuctions(category?: string) {
       },
     },
   });
-
-  return auctions.map((auction: (typeof auctions)[number]) => ({
-    ...auction,
-    images: parseAuctionImages(auction.images),
-  }));
 }
 
 // ---------------- ACTIVITY LOGGING OPERATIONS ----------------
