@@ -1,4 +1,3 @@
-// src/context/AuthContext.tsx
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -11,46 +10,14 @@ export interface User {
   role?: string;
 }
 
-export const PRESET_USERS: User[] = [
-  {
-    id: 'user_bidder1',
-    name: 'Alex Vance',
-    email: 'alex@example.com',
-    avatar: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Alex',
-    role: 'Pro Bidder',
-  },
-  {
-    id: 'user_seller1',
-    name: 'Sarah Connor',
-    email: 'sarah@example.com',
-    avatar: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Sarah',
-    role: 'Power Seller',
-  },
-  {
-    id: 'user_bidder2',
-    name: 'David Light',
-    email: 'david@example.com',
-    avatar: 'https://api.dicebear.com/9.x/avataaars/svg?seed=David',
-    role: 'Collector',
-  },
-  {
-    id: 'user_bidder3',
-    name: 'Elena Rostova',
-    email: 'elena@example.com',
-    avatar: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Elena',
-    role: 'Art Enthusiast',
-  },
-];
-
 interface AuthContextType {
   user: User | null;
   watchlist: string[];
-  login: (user: User) => void;
-  switchUser: (user: User) => void;
+  loginUser: (user: User) => void;
   logout: () => void;
   toggleWatchlist: (auctionId: string) => void;
   isWatchlisted: (auctionId: string) => boolean;
-  presetUsers: User[];
+  isLoaded: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -60,7 +27,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Helper to load watchlist specific to a given user ID
   const loadUserWatchlist = (userId: string) => {
     const saved = localStorage.getItem(`geekybid_watchlist_${userId}`);
     if (saved) {
@@ -82,26 +48,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(parsed);
         loadUserWatchlist(parsed.id);
       } catch {
-        setUser(PRESET_USERS[0]);
-        loadUserWatchlist(PRESET_USERS[0].id);
+        setUser(null);
       }
-    } else {
-      setUser(PRESET_USERS[0]);
-      localStorage.setItem('geekybid_user', JSON.stringify(PRESET_USERS[0]));
-      loadUserWatchlist(PRESET_USERS[0].id);
     }
     setIsLoaded(true);
   }, []);
 
-  // Server Actions read the same mock session from a cookie. Keeping this in a
-  // separate effect avoids coupling browser persistence to state initialization.
   useEffect(() => {
     if (user) {
       document.cookie = `user_session=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=86400; SameSite=Lax`;
+    } else {
+      document.cookie = 'user_session=; path=/; max-age=0; SameSite=Lax';
     }
   }, [user]);
 
-  const login = (newUser: User) => {
+  const loginUser = (newUser: User) => {
     setUser(newUser);
     localStorage.setItem('geekybid_user', JSON.stringify(newUser));
     loadUserWatchlist(newUser.id);
@@ -111,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setWatchlist([]);
     localStorage.removeItem('geekybid_user');
-    document.cookie = 'user_session=; path=/; max-age=0;';
+    document.cookie = 'user_session=; path=/; max-age=0; SameSite=Lax';
   };
 
   const toggleWatchlist = (auctionId: string) => {
@@ -127,19 +88,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isWatchlisted = (auctionId: string) => watchlist.includes(auctionId);
 
-  
-
   return (
     <AuthContext.Provider
       value={{
         user,
         watchlist,
-        login,
-        switchUser: login,
+        loginUser,
         logout,
         toggleWatchlist,
         isWatchlisted,
-        presetUsers: PRESET_USERS,
+        isLoaded,
       }}
     >
       {children}

@@ -2,15 +2,14 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const { loginUser } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const destination = searchParams.get('next')?.startsWith('/') ? searchParams.get('next')! : '/';
 
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,21 +21,21 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ name, email, password }),
       });
 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setError(data.error || 'Failed to log in.');
+        setError(data.error || 'Failed to create account.');
         return;
       }
 
       loginUser(data.user);
-      router.replace(destination);
+      router.replace('/');
     } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
@@ -47,8 +46,8 @@ export default function LoginPage() {
   return (
     <div className="max-w-md mx-auto px-4 py-16 space-y-6">
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-black text-slate-900">Sign in to your account</h1>
-        <p className="text-sm text-slate-500">Welcome back! Please enter your details.</p>
+        <h1 className="text-3xl font-black text-slate-900">Create an account</h1>
+        <p className="text-sm text-slate-500">Join GeekyBid to place bids and host auctions.</p>
       </div>
 
       {error && (
@@ -58,6 +57,18 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name</label>
+          <input
+            type="text"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            placeholder="John Doe"
+          />
+        </div>
+
         <div>
           <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Email</label>
           <input
@@ -87,14 +98,14 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full py-3.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-sm transition disabled:opacity-50"
         >
-          {loading ? 'Signing in...' : 'Sign In'}
+          {loading ? 'Creating account...' : 'Create Account'}
         </button>
       </form>
 
       <p className="text-center text-xs text-slate-500">
-        Don&apos;t have an account?{' '}
-        <Link href="/register" className="font-bold text-purple-600 hover:underline">
-          Create account
+        Already have an account?{' '}
+        <Link href="/login" className="font-bold text-purple-600 hover:underline">
+          Sign in
         </Link>
       </p>
     </div>
