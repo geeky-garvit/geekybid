@@ -1,7 +1,11 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaNeon } from '@prisma/adapter-neon';
-import { Pool } from '@neondatabase/serverless';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import ws from 'ws';
 import bcrypt from 'bcryptjs';
+
+// Required for Neon WebSocket connections in serverless/Node environments
+neonConfig.webSocketConstructor = ws;
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
