@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserByEmail, verifyUserPassword } from '@/lib/users';
+import { findUserByEmail, logUserActivity } from '@/lib/db';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
@@ -16,31 +17,40 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password } = body;
-    const userDoc = await findUserByEmail(email);
 
+    // 1. Fetch user from MongoDB
+    const userDoc = await findUserByEmail(email);
     if (!userDoc) {
       return NextResponse.json(
-        { success: false, message: 'Invalid email or password.' },
+        { success: false, message: 'Invalid credentials.' },
         { status: 401 }
       );
     }
 
-    const isValid = await verifyUserPassword(password, userDoc.passwordHash);
+    // 2. Validate hashed password
+    const isValid = await bcrypt.compare(password, userDoc.passwordHash);
     if (!isValid) {
       return NextResponse.json(
-        { success: false, message: 'Invalid email or password.' },
+        { success: false, message: 'Invalid credentials.' },
         { status: 401 }
       );
     }
 
-    // Generate JWT
+    // 3. Log login activity in MongoDB
+    await logUserActivity({
+      userId: userDoc.id,
+      action: 'USER_LOGGED_IN',
+      details: `Logged in from IP: ${request.headers.get('x-forwarded-for') || 'localhost'}`,
+    });
+
+    // 4. Issue JWT Token
     const token = jwt.sign(
       { userId: userDoc.id, email: userDoc.email, role: userDoc.role },
       process.env.JWT_SECRET || 'fallback_secret',
       { expiresIn: '7d' }
     );
 
-    const userPayload = {
+    const safeUser = {
       id: userDoc.id,
       name: userDoc.name,
       email: userDoc.email,
@@ -48,12 +58,8 @@ export async function POST(request: NextRequest) {
       role: userDoc.role,
     };
 
-    const response = NextResponse.json({
-      success: true,
-      user: userPayload,
-    });
+    const response = NextResponse.json({ success: true, user: safeUser });
 
-    // Set HTTP-Only Cookie
     response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -64,10 +70,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error: any) {
-    console.error('Login API Error:', error);
-    return NextResponse.json(
-      { success: false, message: error?.message || 'Internal server error.' },
-      { status: 500 }
-    );
+    console.error('Login Error:', error);
+    return NextResponse.json({ success: false, message: 'Server error' }, { status: 500 });
   }
 }

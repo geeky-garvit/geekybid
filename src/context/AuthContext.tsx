@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 export interface User {
   id: string;
@@ -14,7 +14,8 @@ interface AuthContextType {
   user: User | null;
   watchlist: string[];
   loginUser: (user: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   toggleWatchlist: (auctionId: string) => void;
   isWatchlisted: (auctionId: string) => boolean;
   isLoaded: boolean;
@@ -40,39 +41,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  useEffect(() => {
-    const savedUser = localStorage.getItem('geekybid_user');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        setUser(parsed);
-        loadUserWatchlist(parsed.id);
-      } catch {
+  // Fetch session from JWT cookie via /api/auth/me
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+
+      if (res.ok && data.success && data.user) {
+        setUser(data.user);
+        loadUserWatchlist(data.user.id);
+      } else {
         setUser(null);
+        setWatchlist([]);
       }
+    } catch (err) {
+      setUser(null);
+      setWatchlist([]);
+    } finally {
+      setIsLoaded(true);
     }
-    setIsLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (user) {
-      document.cookie = `user_session=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=86400; SameSite=Lax`;
-    } else {
-      document.cookie = 'user_session=; path=/; max-age=0; SameSite=Lax';
-    }
-  }, [user]);
+    refreshUser();
+  }, [refreshUser]);
 
   const loginUser = (newUser: User) => {
     setUser(newUser);
-    localStorage.setItem('geekybid_user', JSON.stringify(newUser));
     loadUserWatchlist(newUser.id);
   };
 
-  const logout = () => {
-    setUser(null);
-    setWatchlist([]);
-    localStorage.removeItem('geekybid_user');
-    document.cookie = 'user_session=; path=/; max-age=0; SameSite=Lax';
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setUser(null);
+      setWatchlist([]);
+      window.location.href = '/login';
+    }
   };
 
   const toggleWatchlist = (auctionId: string) => {
@@ -95,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         watchlist,
         loginUser,
         logout,
+        refreshUser,
         toggleWatchlist,
         isWatchlisted,
         isLoaded,

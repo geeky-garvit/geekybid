@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserByEmail, createUser } from '@/lib/users';
+import { findUserByEmail, createUser, logUserActivity, createSellerCommunity } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     const { name, email, password } = body;
 
-    // Check existing account
+    // 1. Check if account already exists
     const existing = await findUserByEmail(email);
     if (existing) {
       return NextResponse.json(
@@ -26,10 +26,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save to Mongo
+    // 2. Persist User document in MongoDB 'users' collection
     const user = await createUser({ name, email, passwordRaw: password });
 
-    // Generate JWT token
+    // 3. Log account creation in MongoDB 'activity' collection
+    await logUserActivity({
+      userId: user.id,
+      action: 'USER_REGISTERED',
+      details: `Account created for ${user.name} (${user.email})`,
+    });
+
+    // 4. Provision default Seller Community Hub in 'communities' collection
+    await createSellerCommunity(user.id, `${user.name}'s Collector Hub`);
+
+    // 5. Generate signed JWT session token
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET || 'fallback_secret',
@@ -41,7 +51,7 @@ export async function POST(request: NextRequest) {
       user,
     });
 
-    // Set HTTP-Only Cookie
+    // 6. Attach secure HTTP-Only Cookie
     response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { findUserByEmail } from '@/lib/users';
+import { findUserByEmail } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         role: userDoc.role,
       },
     });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ success: false, user: null }, { status: 401 });
   }
 }
