@@ -15,17 +15,6 @@ export default function Navbar() {
   const safeWatchlistCount = watchlist?.length ?? 0;
   const safeCartCount = cartCount ?? 0;
 
-  const handleAdminClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (sessionStorage.getItem('geekybid_admin_unlocked') === 'true') return;
-    const passkey = window.prompt('Enter admin passkey');
-    if (passkey === 'ankur sir jindabad') {
-      sessionStorage.setItem('geekybid_admin_unlocked', 'true');
-      return;
-    }
-    event.preventDefault();
-    if (passkey !== null) alert('Incorrect passkey.');
-  };
-
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
@@ -86,13 +75,15 @@ export default function Navbar() {
 
               <NotificationMenu />
 
-              <Link
-                href="/admin"
-                onClick={handleAdminClick}
-                className="hidden lg:flex text-xs font-bold hover:text-purple-600 transition items-center gap-1"
-              >
-                Admin
-              </Link>
+              {/* Show Admin Panel link ONLY if user has 'admin' role */}
+              {user.role === 'admin' && (
+                <Link
+                  href="/admin"
+                  className="hidden lg:flex text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-lg hover:bg-purple-100 transition items-center gap-1"
+                >
+                  Admin Panel
+                </Link>
+              )}
 
               <button
                 onClick={logout}
@@ -230,19 +221,18 @@ export default function Navbar() {
               <span>Seller Dashboard</span>
             </Link>
 
-            <Link
-              href="/admin"
-              onClick={(e) => {
-                setIsMobileMenuOpen(false);
-                handleAdminClick(e);
-              }}
-              className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-purple-50 hover:text-purple-600 transition"
-            >
-              <svg className="w-5 h-5 fill-slate-700" viewBox="0 0 24 24">
-                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
-              </svg>
-              <span>Admin Panel</span>
-            </Link>
+            {user?.role === 'admin' && (
+              <Link
+                href="/admin"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-3 p-2.5 rounded-xl text-purple-700 bg-purple-50 hover:bg-purple-100 transition font-bold"
+              >
+                <svg className="w-5 h-5 fill-purple-700" viewBox="0 0 24 24">
+                  <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
+                </svg>
+                <span>Admin Panel</span>
+              </Link>
+            )}
 
             {user && (
               <button
