@@ -1,81 +1,87 @@
-import { NextResponse } from 'next/server';
-import { getAuctions, initializeStore } from '@/lib/store';
+import { NextRequest, NextResponse } from 'next/server';
+import clientPromise from '@/lib/mongodb';
+import { Filter, Sort } from 'mongodb';
+import { Auction } from '@/types/auction'; 
 
-export async function GET(request: Request) {
+const DB_NAME = process.env.MONGODB_DB || 'auctions_db';
+
+export async function GET(request: NextRequest) {
   try {
-    await initializeStore();
     const { searchParams } = new URL(request.url);
 
-    const category = searchParams.get('category') || undefined;
-    const status = searchParams.get('status') || undefined;
-    const search = searchParams.get('search') || undefined;
-
-    const rawMinPrice = searchParams.get('minPrice');
-    const minPrice = rawMinPrice ? parseFloat(rawMinPrice) : undefined;
-
-    const rawMaxPrice = searchParams.get('maxPrice');
-    const maxPrice = rawMaxPrice ? parseFloat(rawMaxPrice) : undefined;
-
-    const rawEndingWithin = searchParams.get('endingWithin');
-    const endingWithin = rawEndingWithin ? parseInt(rawEndingWithin, 10) : undefined;
-
+    const search = searchParams.get('search');
+    const category = searchParams.get('category');
+    const status = searchParams.get('status') || 'live';
     const sortBy = searchParams.get('sortBy') || 'endingSoon';
-    const cursor = searchParams.get('cursor') || undefined;
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = parseInt(searchParams.get('limit') || '10', 10);
 
-    const rawLimit = searchParams.get('limit');
-    const limit = rawLimit ? parseInt(rawLimit, 10) : 8;
+    const client = await clientPromise;
+    const db = client.db(DB_NAME);
+    
+    // Explicitly pass <Auction> generic to collection call
+    const collection = db.collection<Auction>('auctions');
+    const query: Filter<Auction> = {};
 
-    let items = getAuctions({ category, status, search });
-
-    if (minPrice !== undefined && !isNaN(minPrice)) {
-      items = items.filter((a) => a.currentHighestBid >= minPrice);
-    }
-    if (maxPrice !== undefined && !isNaN(maxPrice)) {
-      items = items.filter((a) => a.currentHighestBid <= maxPrice);
-    }
-    if (endingWithin !== undefined && !isNaN(endingWithin)) {
-      const cutoffTime = Date.now() + endingWithin * 3600 * 1000;
-      items = items.filter((a) => new Date(a.endTime).getTime() <= cutoffTime);
+    if (status !== 'all') {
+      query.status = status as Auction['status'];
     }
 
-    items.sort((a, b) => {
-      if (sortBy === 'endingSoon') {
-        return new Date(a.endTime).getTime() - new Date(b.endTime).getTime();
-      }
-      if (sortBy === 'priceAsc') {
-        return a.currentHighestBid - b.currentHighestBid;
-      }
-      if (sortBy === 'priceDesc') {
-        return b.currentHighestBid - a.currentHighestBid;
-      }
-      if (sortBy === 'mostBids') {
-        return b.bidsCount - a.bidsCount;
-      }
-      return 0;
-    });
-
-    let startIndex = 0;
-    if (cursor) {
-      const foundIndex = items.findIndex((i) => i.id === cursor);
-      if (foundIndex !== -1) {
-        startIndex = foundIndex + 1;
-      }
+    if (category && category !== 'all') {
+      query.category = category as Auction['category'];
     }
 
-    const paginatedItems = items.slice(startIndex, startIndex + limit);
-    const nextCursor =
-      paginatedItems.length === limit && startIndex + limit < items.length
-        ? paginatedItems[paginatedItems.length - 1].id
-        : null;
+    if (search) {
+      query.$text = { $search: search };
+    }
+
+    let sortOption: Sort = {};
+    switch (sortBy) {
+      case 'endingSoon':
+        sortOption = { endTime: 1 };
+        break;
+      case 'priceLow':
+        sortOption = { currentHighestBid: 1 };
+        break;
+      case 'priceHigh':
+        sortOption = { currentHighestBid: -1 };
+        break;
+      case 'mostBids':
+        sortOption = { bidsCount: -1 };
+        break;
+      case 'newest':
+        sortOption = { createdAt: -1 };
+        break;
+      default:
+        sortOption = { endTime: 1 };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [auctions, total] = await Promise.all([
+      collection
+        .find(query)
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limit)
+        .toArray(),
+      collection.countDocuments(query),
+    ]);
 
     return NextResponse.json({
-      items: paginatedItems,
-      nextCursor,
-      total: items.length,
+      success: true,
+      data: auctions,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
+    console.error('Failed to fetch auctions:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal Server Error' },
+      { success: false, error: 'Failed to fetch auctions' },
       { status: 500 }
     );
   }
