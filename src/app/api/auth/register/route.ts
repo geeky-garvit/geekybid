@@ -1,58 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findUserByEmail, createUser } from '@/lib/users';
+import jwt from 'jsonwebtoken';
 
-export const dynamic = 'force-dynamic'; // Ensures route isn't evaluated at build time
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+
+    if (!body || !body.name || !body.email || !body.password) {
+      return NextResponse.json(
+        { success: false, message: 'All fields (Name, Email, Password) are required.' },
+        { status: 400 }
+      );
+    }
+
     const { name, email, password } = body;
 
-    if (!name || !email || !password) {
+    // Check existing account
+    const existing = await findUserByEmail(email);
+    if (existing) {
       return NextResponse.json(
-        { success: false, message: 'All fields are required.' },
+        { success: false, message: 'An account with this email already exists.' },
         { status: 400 }
       );
     }
 
-    // Sanitize input
-    const cleanEmail = email.toLowerCase().trim();
+    // Save to Mongo
+    const user = await createUser({ name, email, passwordRaw: password });
 
-    // Check existing user
-    const existingUser = await findUserByEmail(cleanEmail);
-    if (existingUser) {
-      return NextResponse.json(
-        { success: false, message: 'An account with this email/username already exists.' },
-        { status: 400 }
-      );
-    }
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '7d' }
+    );
 
-    const newUser = await createUser({
-      id: `user_${Date.now()}`,
-      name,
-      email: cleanEmail,
-      password,
-      avatar: `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
-      role: 'user',
-    });
-
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        avatar: newUser.avatar,
-        role: newUser.role,
-      },
+      user,
     });
+
+    // Set HTTP-Only Cookie
+    response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
+
+    return response;
   } catch (error: any) {
-    console.error('PROD Registration Error Log:', error);
+    console.error('Registration API Error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        message: error?.message || 'Server error during account creation.',
-      },
+      { success: false, message: error?.message || 'Failed to create account.' },
       { status: 500 }
     );
   }

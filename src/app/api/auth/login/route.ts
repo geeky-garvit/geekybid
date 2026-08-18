@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserByEmail } from '@/lib/users';
+import { findUserByEmail, verifyUserPassword } from '@/lib/users';
+import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,37 +10,63 @@ export async function POST(request: NextRequest) {
 
     if (!body || !body.email || !body.password) {
       return NextResponse.json(
-        { success: false, error: 'Email and password are required.' },
+        { success: false, message: 'Email and password are required.' },
         { status: 400 }
       );
     }
 
     const { email, password } = body;
-    const user = await findUserByEmail(email);
+    const userDoc = await findUserByEmail(email);
 
-    if (!user || user.password !== password) {
+    if (!userDoc) {
       return NextResponse.json(
-        { success: false, error: 'Invalid email or password.' },
+        { success: false, message: 'Invalid email or password.' },
         { status: 401 }
       );
     }
 
+    const isValid = await verifyUserPassword(password, userDoc.passwordHash);
+    if (!isValid) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid email or password.' },
+        { status: 401 }
+      );
+    }
+
+    // Generate JWT
+    const token = jwt.sign(
+      { userId: userDoc.id, email: userDoc.email, role: userDoc.role },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '7d' }
+    );
+
     const userPayload = {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      avatar: user.avatar,
-      role: user.role || 'user',
+      id: userDoc.id,
+      name: userDoc.name,
+      email: userDoc.email,
+      avatar: userDoc.avatar,
+      role: userDoc.role,
     };
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       user: userPayload,
     });
+
+    // Set HTTP-Only Cookie
+    response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
+    });
+
+    return response;
   } catch (error: any) {
-    console.error('Login Route Error:', error?.stack || error);
+    console.error('Login API Error:', error);
     return NextResponse.json(
-      { success: false, error: error?.message || 'Internal server error.' },
+      { success: false, message: error?.message || 'Internal server error.' },
       { status: 500 }
     );
   }

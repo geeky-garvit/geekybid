@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@prisma/client": "^7.9.1",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.31.0",
     "mongodb": "^7.5.0",
     "next": "16.3.0",
@@ -22,6 +24,8 @@
   "devDependencies": {
     "@faker-js/faker": "^10.5.0",
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.19.43",
     "@types/react": "^19",
     "@types/react-dom": "^19",

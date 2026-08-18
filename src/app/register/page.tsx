@@ -1,113 +1,126 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
+import Link from 'next/link';
 
 export default function RegisterPage() {
-  const { loginUser } = useAuth();
   const router = useRouter();
-
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
+    setError(null);
 
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify(formData),
       });
 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setError(data.error || 'Failed to create account.');
-        return;
+        throw new Error(data.message || 'Failed to create account.');
       }
 
-      loginUser(data.user);
-      router.replace('/');
-    } catch {
-      setError('An unexpected error occurred. Please try again.');
+      // Success: Redirect user to marketplace or home page
+      router.push('/auctions');
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16 space-y-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-black text-slate-900">Create an account</h1>
-        <p className="text-sm text-slate-500">Join GeekyBid to place bids and host auctions.</p>
+    <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
+      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-3xl border border-slate-200 shadow-xl">
+        <div className="text-center">
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Create an account</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Join GeekyBid to place bids and host auctions.
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold rounded-2xl flex items-center gap-2">
+            <span>⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+              Full Name
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-600 text-slate-900 font-medium text-sm transition"
+              placeholder="Garvit Chawla"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+              Email
+            </label>
+            <input
+              type="email"
+              required
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-600 text-slate-900 font-medium text-sm transition"
+              placeholder="garvit@example.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-600 text-slate-900 font-medium text-sm transition"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-purple-200 transition duration-150 flex justify-center items-center"
+          >
+            {loading ? (
+              <span className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+            ) : (
+              'Create Account'
+            )}
+          </button>
+        </form>
+
+        <div className="text-center pt-2">
+          <p className="text-sm text-slate-500">
+            Already have an account?{' '}
+            <Link href="/login" className="font-bold text-purple-700 hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </div>
       </div>
-
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm font-medium">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name</label>
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            placeholder="John Doe"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Email</label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            placeholder="you@example.com"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Password</label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            placeholder="••••••••"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-sm transition disabled:opacity-50"
-        >
-          {loading ? 'Creating account...' : 'Create Account'}
-        </button>
-      </form>
-
-      <p className="text-center text-xs text-slate-500">
-        Already have an account?{' '}
-        <Link href="/login" className="font-bold text-purple-600 hover:underline">
-          Sign in
-        </Link>
-      </p>
-    </div>
+    </main>
   );
 }
