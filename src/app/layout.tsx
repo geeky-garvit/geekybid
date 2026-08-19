@@ -3,6 +3,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import Navbar from '@/app/components/Navbar'; 
+import { Toaster } from 'sonner';
 
 export const metadata = {
   title: 'Auction Marketplace',
@@ -28,6 +29,14 @@ export default function RootLayout({
               <Navbar />
               <main className="flex-1">{children}</main>
               {modal}
+              <Toaster 
+                position="top-right" 
+                richColors 
+                closeButton 
+                toastOptions={{
+                  style: { borderRadius: '1rem' }
+                }} 
+              />
             </CartProvider>
           </NotificationProvider>
         </AuthProvider>

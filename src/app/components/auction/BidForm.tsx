@@ -1,9 +1,15 @@
-// components/auction/BidForm.tsx
 'use client';
 
 import { useState } from 'react';
-import { Bid, placeBid } from '@/lib/store';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+
+export interface Bid {
+  id: string;
+  bidderName: string;
+  amount: number;
+  time: string | Date;
+}
 
 interface Props {
   auctionId: string;
@@ -20,6 +26,7 @@ export default function BidForm({
   initialBidsCount,
   initialHistory,
 }: Props) {
+  const router = useRouter();
   const { user } = useAuth();
   const [isPending, setIsPending] = useState(false);
 
@@ -36,23 +43,73 @@ export default function BidForm({
     return `${name[0]}***${name[name.length - 1]}`;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus(null);
 
-    if (!user) return setStatus({ success: false, text: 'Select a profile before bidding.' });
+    // 1. Unauthenticated users redirected to login
+    if (!user) {
+      router.push(`/login?redirectTo=/auctions/${auctionId}`);
+      return;
+    }
+
+    // 2. Validate bid amount before making request
+    if (amount < minAllowed) {
+      setStatus({
+        success: false,
+        text: `Bid must be at least $${minAllowed.toFixed(2)}.`,
+      });
+      return;
+    }
+
     setIsPending(true);
+
     try {
-      const updated = placeBid(auctionId, amount, user.id, user.name);
-        // Direct local state sync
-      setHighestBid(updated.currentHighestBid);
-      setBidsCount(updated.bidsCount);
-      setHistory(updated.history);
-      setAmount(updated.currentHighestBid + minIncrement);
-      setStatus({ success: true, text: 'Bid placed successfully.' });
+      // 3. Send request with credentials so JWT cookies are passed to /api/bids
+      const res = await fetch('/api/bids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ auctionId, amount }),
+      });
+
+      const data = await res.json().catch(() => ({
+        success: false,
+        message: 'Unexpected server error response.',
+      }));
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setStatus({ success: false, text: 'Session expired. Please log in again.' });
+          router.push(`/login?redirectTo=/auctions/${auctionId}`);
+          return;
+        }
+        throw new Error(data.message || `Server error (${res.status})`);
+      }
+
+      // 4. Update local state on success
+      const newBid: Bid = {
+        id: Date.now().toString(),
+        bidderName: user.name || 'You',
+        amount,
+        time: new Date().toISOString(),
+      };
+
+      setHighestBid(amount);
+      setBidsCount((prev) => prev + 1);
+      setHistory((prev) => [newBid, ...prev]);
+      setAmount(amount + minIncrement);
+      setStatus({ success: true, text: data.message || 'Bid placed successfully!' });
+
+      router.refresh();
     } catch (error) {
-      setStatus({ success: false, text: error instanceof Error ? error.message : 'Unable to place bid.' });
-    } finally { setIsPending(false); }
+      setStatus({
+        success: false,
+        text: error instanceof Error ? error.message : 'Unable to place bid.',
+      });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (
@@ -76,7 +133,7 @@ export default function BidForm({
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleAction} className="space-y-3">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Your Bid ($) — Min: ${minAllowed.toFixed(2)}
@@ -84,10 +141,10 @@ export default function BidForm({
             <input
               type="number"
               step="0.01"
-              min={minAllowed}
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
-              className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none transition"
+              className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none transition disabled:bg-slate-50"
+              disabled={!user || isPending}
               required
             />
           </div>
@@ -95,9 +152,17 @@ export default function BidForm({
           <button
             type="submit"
             disabled={isPending}
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition shadow-sm shadow-purple-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`w-full font-bold py-3 rounded-xl transition shadow-sm ${
+              user
+                ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20'
+                : 'bg-slate-900 hover:bg-slate-800 text-white'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {isPending ? 'Placing Bid...' : 'Place Bid'}
+            {isPending
+              ? 'Placing Bid...'
+              : user
+              ? 'Place Bid'
+              : 'Sign In to Place Bid'}
           </button>
         </form>
 

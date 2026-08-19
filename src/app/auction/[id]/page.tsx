@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, use, useCallback } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner'; // <-- Import Sonner
 import { getAuctionById, initializeStore, Auction, placeBid, subscribeToStore } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
-import { useNotifications } from '@/context/NotificationContext';
 import AuctionGallery from './components/AuctionGallery';
 import AuctionBiddingCard from './components/AuctionBiddingCard';
 import AuctionBidHistory, { Bid } from './components/AuctionBidHistory';
@@ -20,7 +20,6 @@ export default function AuctionDetailPage({
 
   const { user, isWatchlisted, toggleWatchlist } = useAuth();
   const { addToCart } = useCart();
-  const { notify } = useNotifications();
 
   const [auction, setAuction] = useState<Auction | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
@@ -33,7 +32,6 @@ export default function AuctionDetailPage({
     isEnded: false,
   });
 
-  // 1. Helper to sync component state from central store
   const syncStoreData = useCallback(() => {
     const foundAuction = getAuctionById(id);
     if (foundAuction) {
@@ -57,70 +55,64 @@ export default function AuctionDetailPage({
     }
   }, [id]);
 
-  // 2. Initial load and background polling interval
   useEffect(() => {
     let isMounted = true;
-
     async function loadAuctionData() {
       await initializeStore();
       if (!isMounted) return;
       syncStoreData();
       setLoading(false);
     }
-
     loadAuctionData();
-
     const unsubscribe = subscribeToStore(syncStoreData);
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
+    return () => { isMounted = false; unsubscribe(); };
   }, [id, syncStoreData]);
 
-  // 3. Countdown calculation effect
   useEffect(() => {
     if (!auction) return;
-
     const calculateTimeLeft = () => {
       const isExpiredByStatus = auction.status === 'ended' || auction.status === 'paid';
       const diff = new Date(auction.endTime).getTime() - new Date().getTime();
-
       if (diff <= 0 || isExpiredByStatus) {
         setTimeLeft({ hours: 0, minutes: 0, seconds: 0, isEnded: true });
         return;
       }
-
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      setTimeLeft({ hours, minutes, seconds, isEnded: false });
+      setTimeLeft({
+        hours: Math.floor(diff / (1000 * 60 * 60)),
+        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((diff % (1000 * 60)) / 1000),
+        isEnded: false
+      });
     };
-
     calculateTimeLeft();
     const timer = setInterval(calculateTimeLeft, 1000);
     return () => clearInterval(timer);
   }, [auction]);
 
-  // 4. Place bid handling
+  // Refactored HandlePlaceBid with Sonner
   const handlePlaceBid = useCallback(
     async (amount: number) => {
       if (!auction || !user) return;
+      const toastId = toast.loading('Submitting your bid...');
 
       try {
         placeBid(auction.id, amount, user.id, user.name);
-        notify('Bid placed', `Your $${amount.toFixed(2)} bid on ${auction.title} was saved on this device.`);
+        toast.success('Bid placed successfully!', {
+            id: toastId,
+            description: `You are now the highest bidder at $${amount.toFixed(2)}`
+        });
         syncStoreData();
       } catch (err: unknown) {
-        if (err instanceof Error) {
-          alert(err.message);
-        }
+        toast.error('Bid rejected', {
+            id: toastId,
+            description: err instanceof Error ? err.message : 'Something went wrong.'
+        });
       }
     },
-    [auction, user, syncStoreData, notify]
+    [auction, user, syncStoreData]
   );
 
+  // Refactored HandleAddToCart with Sonner
   const handleAddToCart = useCallback(() => {
     if (!auction) return;
     addToCart({
@@ -130,8 +122,10 @@ export default function AuctionDetailPage({
       image: auction.images[0],
       sellerName: auction.sellerName,
     });
-    notify('Added to cart', `${auction.title} is ready for checkout.`);
-  }, [auction, addToCart, notify]);
+    toast.success('Added to cart', {
+        description: `${auction.title} is ready for checkout.`
+    });
+  }, [auction, addToCart]);
 
   if (loading) {
     return (
@@ -146,10 +140,7 @@ export default function AuctionDetailPage({
     return (
       <div className="max-w-7xl mx-auto px-4 py-16 text-center space-y-4">
         <h2 className="text-lg font-bold text-slate-800">Auction Listing Not Found</h2>
-        <Link
-          href="/auctions"
-          className="inline-block bg-purple-600 text-white font-bold text-xs px-4 py-2 rounded-xl"
-        >
+        <Link href="/auctions" className="inline-block bg-purple-600 text-white font-bold text-xs px-4 py-2 rounded-xl">
           Back to Marketplace
         </Link>
       </div>
@@ -158,10 +149,9 @@ export default function AuctionDetailPage({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+      {/* ... rest of your JSX remains exactly the same ... */}
       <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-        <Link href="/auctions" className="hover:text-purple-600">
-          Marketplace
-        </Link>
+        <Link href="/auctions" className="hover:text-purple-600">Marketplace</Link>
         <span>/</span>
         <span className="capitalize">{auction.category}</span>
         <span>/</span>
@@ -176,14 +166,9 @@ export default function AuctionDetailPage({
             inWatchlist={isWatchlisted(auction.id)}
             onToggleWatchlist={() => toggleWatchlist(auction.id)}
           />
-
           <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3 shadow-sm">
-            <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-              Item Details
-            </h2>
-            <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
-              {auction.description}
-            </p>
+            <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">Item Details</h2>
+            <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{auction.description}</p>
           </div>
         </div>
 
@@ -199,7 +184,6 @@ export default function AuctionDetailPage({
             onPlaceBid={handlePlaceBid}
             onAddToCart={handleAddToCart}
           />
-
           <AuctionBidHistory bids={bidsHistory} />
         </div>
       </div>

@@ -3,38 +3,51 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { registerSchema } from '@/lib/validation';
+import { z } from 'zod';
+
+type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      name: '',
+      email: '',
+      password: '',
+    },
+  });
+
+  const onSubmit = async (data: RegisterFormData) => {
     setError(null);
 
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(data),
       });
 
-      const data = await res.json();
+      const resData = await res.json();
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to create account.');
+      if (!res.ok || !resData.success) {
+        throw new Error(resData.message || resData.error || 'Failed to create account.');
       }
 
-      // Success: Redirect user to marketplace or home page
+      // Redirect user to marketplace or home page
       router.push('/auctions');
       router.refresh();
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred. Please try again.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -55,19 +68,26 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+        <form className="mt-8 space-y-5" onSubmit={handleSubmit(onSubmit)}>
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
               Full Name
             </label>
             <input
               type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-600 text-slate-900 font-medium text-sm transition"
+              {...register('name')}
+              className={`w-full px-4 py-3 rounded-xl border text-slate-900 font-medium text-sm transition focus:outline-none focus:ring-2 ${
+                errors.name
+                  ? 'border-rose-500 focus:ring-rose-200'
+                  : 'border-slate-200 focus:ring-purple-600'
+              }`}
               placeholder="Garvit Chawla"
             />
+            {errors.name && (
+              <p className="mt-1.5 text-xs font-semibold text-rose-600">
+                {errors.name.message}
+              </p>
+            )}
           </div>
 
           <div>
@@ -76,12 +96,19 @@ export default function RegisterPage() {
             </label>
             <input
               type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-600 text-slate-900 font-medium text-sm transition"
+              {...register('email')}
+              className={`w-full px-4 py-3 rounded-xl border text-slate-900 font-medium text-sm transition focus:outline-none focus:ring-2 ${
+                errors.email
+                  ? 'border-rose-500 focus:ring-rose-200'
+                  : 'border-slate-200 focus:ring-purple-600'
+              }`}
               placeholder="garvit@example.com"
             />
+            {errors.email && (
+              <p className="mt-1.5 text-xs font-semibold text-rose-600">
+                {errors.email.message}
+              </p>
+            )}
           </div>
 
           <div>
@@ -90,21 +117,27 @@ export default function RegisterPage() {
             </label>
             <input
               type="password"
-              required
-              minLength={6}
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-600 text-slate-900 font-medium text-sm transition"
+              {...register('password')}
+              className={`w-full px-4 py-3 rounded-xl border text-slate-900 font-medium text-sm transition focus:outline-none focus:ring-2 ${
+                errors.password
+                  ? 'border-rose-500 focus:ring-rose-200'
+                  : 'border-slate-200 focus:ring-purple-600'
+              }`}
               placeholder="••••••••"
             />
+            {errors.password && (
+              <p className="mt-1.5 text-xs font-semibold text-rose-600">
+                {errors.password.message}
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isSubmitting}
             className="w-full bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-purple-200 transition duration-150 flex justify-center items-center"
           >
-            {loading ? (
+            {isSubmitting ? (
               <span className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
             ) : (
               'Create Account'

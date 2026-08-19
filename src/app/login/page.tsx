@@ -1,46 +1,62 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
+import { loginSchema, LoginFormData } from '@/lib/validation';
 
 export default function LoginPage() {
   const router = useRouter();
   const { loginUser } = useAuth();
 
-  const [formData, setFormData] = useState({ email: '', password: '' });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+  const onSubmit = async (data: LoginFormData) => {
+    const toastId = toast.loading('Signing you in...');
 
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(data),
       });
 
-      const data = await res.json();
+      const resData = await res.json();
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Invalid email or password.');
+      if (!res.ok || !resData.success) {
+        throw new Error(resData.message || resData.error || 'Invalid email or password.');
       }
 
       // Update global context state
-      loginUser(data.user);
+      loginUser(resData.user);
+
+      toast.success('Welcome back!', {
+        id: toastId,
+        description: `Signed in as ${resData.user?.name || resData.user?.email}`,
+      });
 
       // Redirect user to marketplace
       router.push('/auctions');
       router.refresh();
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred. Please try again.');
-    } finally {
-      setLoading(false);
+      toast.error('Login Failed', {
+        id: toastId,
+        description: err.message || 'An unexpected error occurred. Please try again.',
+      });
     }
   };
 
@@ -54,26 +70,26 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {error && (
-          <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold rounded-2xl flex items-center gap-2">
-            <span>⚠️</span>
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+        <form className="mt-8 space-y-5" onSubmit={handleSubmit(onSubmit)}>
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
               Email
             </label>
             <input
               type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-600 text-slate-900 font-medium text-sm transition"
+              {...register('email')}
+              className={`w-full px-4 py-3 rounded-xl border text-slate-900 font-medium text-sm transition focus:outline-none focus:ring-2 ${
+                errors.email
+                  ? 'border-rose-500 focus:ring-rose-200'
+                  : 'border-slate-200 focus:ring-purple-600'
+              }`}
               placeholder="garvit@example.com"
             />
+            {errors.email && (
+              <p className="mt-1.5 text-xs font-semibold text-rose-600">
+                {errors.email.message}
+              </p>
+            )}
           </div>
 
           <div>
@@ -82,20 +98,27 @@ export default function LoginPage() {
             </label>
             <input
               type="password"
-              required
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-600 text-slate-900 font-medium text-sm transition"
+              {...register('password')}
+              className={`w-full px-4 py-3 rounded-xl border text-slate-900 font-medium text-sm transition focus:outline-none focus:ring-2 ${
+                errors.password
+                  ? 'border-rose-500 focus:ring-rose-200'
+                  : 'border-slate-200 focus:ring-purple-600'
+              }`}
               placeholder="••••••••"
             />
+            {errors.password && (
+              <p className="mt-1.5 text-xs font-semibold text-rose-600">
+                {errors.password.message}
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isSubmitting}
             className="w-full bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-purple-200 transition duration-150 flex justify-center items-center"
           >
-            {loading ? (
+            {isSubmitting ? (
               <span className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
             ) : (
               'Sign In'
