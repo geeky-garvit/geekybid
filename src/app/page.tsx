@@ -1,8 +1,9 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { getAuctions, initializeStore, Auction } from '@/lib/store';
-
-export const dynamic = 'force-dynamic';
+import { getAuctions, initializeStore, subscribeToStore, Auction } from '@/lib/store';
 
 function getBidCount(item: Auction): number {
   return Array.isArray(item.history) ? item.history.length : item.bidsCount || 0;
@@ -24,7 +25,7 @@ function AuctionCard({ item, badgeText, badgeBg }: { item: Auction; badgeText: s
   const imageSrc =
     item.images && item.images.length > 0
       ? item.images[0]
-      : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600';
+      : 'https://cdn.dummyjson.com/product-images/1/thumbnail.jpg';
 
   return (
     <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between">
@@ -57,7 +58,7 @@ function AuctionCard({ item, badgeText, badgeBg }: { item: Auction; badgeText: s
           <span className="text-lg font-black text-purple-950">${item.currentHighestBid.toFixed(2)}</span>
         </div>
         <Link
-          href={`/auction/${encodeURIComponent(item.id)}`}
+          href={`/auctions/${encodeURIComponent(item.id)}`}
           className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
         >
           Place Bid
@@ -67,10 +68,33 @@ function AuctionCard({ item, badgeText, badgeBg }: { item: Auction; badgeText: s
   );
 }
 
-export default async function HomePage() {
-  await initializeStore();
+export default function HomePage() {
+  const [allAuctions, setAllAuctions] = useState<Auction[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const allAuctions = getAuctions();
+  useEffect(() => {
+    async function setup() {
+      await initializeStore();
+      setAllAuctions(getAuctions());
+      setLoading(false);
+    }
+
+    setup();
+    const unsubscribe = subscribeToStore(() => {
+      setAllAuctions(getAuctions());
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <p className="text-sm font-bold text-slate-500">Loading Marketplace Data...</p>
+      </div>
+    );
+  }
+
   const liveAuctions = allAuctions.filter((a) => a.status === 'live');
 
   const endingSoon = [...liveAuctions]
@@ -89,10 +113,10 @@ export default async function HomePage() {
   }, {});
 
   const categoryConfig = [
-    { name: 'Electronics', key: 'electronics', icon: '💻' },
-    { name: 'Photography', key: 'photography', icon: '📷' },
-    { name: 'General', key: 'general', icon: '📦' },
-    { name: 'Collectibles', key: 'collectibles', icon: '🎨' },
+    { name: 'Beauty & Fragrance', key: 'beauty', icon: '💄' },
+    { name: 'Laptops & Tech', key: 'laptops', icon: '💻' },
+    { name: 'Smartphones', key: 'smartphones', icon: '📱' },
+    { name: 'Home Decor', key: 'home-decoration', icon: '🏡' },
   ];
 
   const categories = categoryConfig.map((cat) => ({
@@ -103,14 +127,12 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Hero Banner */}
-      <section className="bg-gradient-to-b from-lavender-400 via-purple-300 to-lavender-200 text-purple-950 py-16 px-4">
+      <section className="bg-gradient-to-b from-purple-900 via-purple-900 to-purple-950 text-white py-16 px-4">
         <div className="max-w-5xl mx-auto text-center space-y-4">
-          
           <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-tight">
             Bid in Real-Time. <br />
             <span className="text-purple-400">Win Rare Items Today.</span>
           </h1>
-          
 
           <div className="pt-4 flex justify-center gap-4">
             <Link
