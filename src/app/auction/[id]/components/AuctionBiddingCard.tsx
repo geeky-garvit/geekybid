@@ -2,6 +2,9 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
 
 interface TimeLeft {
   hours: number;
@@ -35,17 +38,50 @@ export default function AuctionBiddingCard({
   onAddToCart,
   liveViewers,
 }: AuctionBiddingCardProps) {
+  const { user } = useAuth();
+  const router = useRouter();
+
   const [bidInput, setBidInput] = useState<string>('');
   const [cartAdded, setCartAdded] = useState<boolean>(false);
 
   const minBidAllowed = currentHighestBid + minIncrement;
 
+  // Compute 5-minute minimum duration boundary
+  const totalMinutesLeft = timeLeft.hours * 60 + timeLeft.minutes;
+  const isExpiredOrTooShort = timeLeft.isEnded || totalMinutesLeft < 5;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 0. Time duration validation (< 5 mins or ended)
+    if (isExpiredOrTooShort) {
+      toast.error('Bidding Closed!', {
+        description: timeLeft.isEnded
+          ? 'This auction has ended.'
+          : 'Bidding is disabled when fewer than 5 minutes remain.',
+      });
+      return;
+    }
+
+    // 1. Unauthenticated check
+    if (!user) {
+      toast.error('Sign in required to place a bid!', {
+        description: 'Please sign in to your account to participate in this auction.',
+        action: {
+          label: 'Sign In',
+          onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
+        },
+      });
+      return;
+    }
+
     const amount = parseFloat(bidInput);
 
+    // 2. Minimum bid value validation
     if (isNaN(amount) || amount < minBidAllowed) {
-      alert(`Minimum bid required: $${minBidAllowed.toFixed(2)}`);
+      toast.error('Bid amount too low!', {
+        description: `Minimum bid required is $${minBidAllowed.toFixed(2)}.`,
+      });
       return;
     }
 
@@ -54,9 +90,33 @@ export default function AuctionBiddingCard({
   };
 
   const handleCartClick = () => {
+    if (!user) {
+      toast.error('Sign in required to add items to cart!', {
+        description: 'Please sign in to save items to your shopping cart.',
+        action: {
+          label: 'Sign In',
+          onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
+        },
+      });
+      return;
+    }
+
     onAddToCart();
     setCartAdded(true);
     setTimeout(() => setCartAdded(false), 2000);
+  };
+
+  const handleBuyNowClick = (e: React.MouseEvent) => {
+    if (!user) {
+      e.preventDefault();
+      toast.error('Sign in required to proceed to checkout!', {
+        description: 'Please sign in to complete your purchase.',
+        action: {
+          label: 'Sign In',
+          onClick: () => router.push(`/login?redirectTo=/checkout?auctionId=${auctionId}`),
+        },
+      });
+    }
   };
 
   return (
@@ -97,6 +157,7 @@ export default function AuctionBiddingCard({
         </span>
       </div>
 
+      {/* Live Viewers Indicator Badge */}
       {liveViewers !== undefined && liveViewers > 0 && (
         <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-600 bg-sky-100 px-2.5 py-1 rounded-full border border-sky-200/60 w-fit">
           <span className="relative flex h-2 w-2">
@@ -107,6 +168,7 @@ export default function AuctionBiddingCard({
         </div>
       )}
 
+      {/* Dynamic Bidding Form Controls */}
       {!timeLeft.isEnded ? (
         <div className="space-y-4">
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -121,18 +183,30 @@ export default function AuctionBiddingCard({
                   step="0.01"
                   min={minBidAllowed}
                   value={bidInput}
+                  disabled={isExpiredOrTooShort}
                   onChange={(e) => setBidInput(e.target.value)}
                   placeholder={minBidAllowed.toFixed(2)}
-                  className="w-full pl-7 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-purple-600 outline-none"
+                  className="w-full pl-7 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-purple-600 outline-none disabled:bg-slate-50 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl text-xs transition shadow-md shadow-purple-600/20"
+              disabled={isExpiredOrTooShort}
+              className={`w-full font-bold py-3 rounded-xl text-xs transition shadow-md ${
+                isExpiredOrTooShort
+                  ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
+                  : user
+                  ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white'
+              }`}
             >
-              Place Bid Now
+              {isExpiredOrTooShort
+                ? 'Bidding Closed (< 5m remaining)'
+                : user
+                ? 'Place Bid Now'
+                : 'Sign In to Place Bid'}
             </button>
           </form>
 
@@ -157,6 +231,7 @@ export default function AuctionBiddingCard({
             </button>
             <Link
               href={`/checkout?auctionId=${auctionId}`}
+              onClick={handleBuyNowClick}
               className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2.5 rounded-xl flex items-center justify-center"
             >
               Buy Now
