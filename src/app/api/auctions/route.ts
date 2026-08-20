@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +12,6 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.max(1, parseInt(searchParams.get('limit') || '10', 10));
 
-    // Construct Prisma where filter
     const where: any = {};
 
     if (status !== 'all') {
@@ -30,7 +29,6 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Construct Prisma orderBy
     let orderBy: any = {};
     switch (sortBy) {
       case 'endingSoon':
@@ -79,6 +77,43 @@ export async function GET(request: NextRequest) {
     console.error('Failed to fetch auctions:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch auctions' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { title, category, description, startingBid, minIncrement, endTime, images, sellerId } = body;
+
+    if (!title || !startingBid || !endTime || !sellerId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    const newAuction = await prisma.auction.create({
+      data: {
+        title,
+        category: category || 'general',
+        description: description || '',
+        startingBid: parseFloat(startingBid),
+        currentPrice: parseFloat(startingBid),
+        minIncrement: parseFloat(minIncrement) || 1,
+        endTime: new Date(endTime),
+        images: images || [],
+        status: 'ACTIVE',
+        sellerId,
+      },
+    });
+
+    return NextResponse.json({ success: true, auction: newAuction });
+  } catch (error) {
+    console.error('Failed to create auction:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to create auction record' },
       { status: 500 }
     );
   }

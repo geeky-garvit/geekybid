@@ -1,5 +1,6 @@
 datasource db {
   provider = "postgresql"
+  
 }
 
 generator client {
@@ -24,25 +25,26 @@ model User {
 }
 
 model Auction {
-  id              String   @id @default(uuid())
+  id              String          @id @default(uuid())
   title           String
   description     String
   category        String
   startingBid     Float
   currentPrice    Float
-  minIncrement    Float    @default(5.0)
-  status          String   @default("ACTIVE") // ACTIVE, ENDED, PAID
+  minIncrement    Float           @default(5.0)
+  status          String          @default("ACTIVE") // ACTIVE, ENDED, PAID
   images          String[]
   attributes      Json?
   endTime         DateTime
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   sellerId        String
-  seller          User     @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
+  seller          User            @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
   highestBidderId String?
 
   bids            Bid[]
+  viewers         AuctionViewer[]
 }
 
 model Bid {
@@ -94,13 +96,14 @@ model CommunityMember {
 }
 
 model AuctionViewer {
-  id         String   @id @default(cuid())
-  auctionId  String
-  sessionId  String
-  lastSeen   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  auctionId String
+  sessionId String
+  lastSeen  DateTime @updatedAt
+
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 
   @@unique([auctionId, sessionId])
   @@index([auctionId])
   @@index([lastSeen])
 }
-

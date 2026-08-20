@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
-import { createAuction } from '@/lib/store';
 import ItemDetailsSection from './components/ItemDetailsSection';
 import PricingSection from './components/PricingSection';
 import ImageUploaderSection from './components/ImageUploaderSection';
@@ -23,8 +22,6 @@ export default function CreateAuctionPage() {
   const [description, setDescription] = useState('');
   const [startingBid, setStartingBid] = useState('');
   const [reservePrice, setReservePrice] = useState('');
-  
-  // Changed duration to minutes with default minimum of 5 minutes
   const [durationMinutes, setDurationMinutes] = useState<number>(5);
 
   const [imageUrls, setImageUrls] = useState<string[]>([
@@ -57,7 +54,7 @@ export default function CreateAuctionPage() {
     setImageUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!title.trim()) {
@@ -65,7 +62,6 @@ export default function CreateAuctionPage() {
       return;
     }
 
-    // 1. Duration Validation: Must be at least 5 minutes
     if (isNaN(durationMinutes) || durationMinutes < MIN_DURATION_MINUTES) {
       toast.error('Invalid Duration!', {
         description: `Minimum auction duration must be at least ${MIN_DURATION_MINUTES} minutes.`,
@@ -90,28 +86,38 @@ export default function CreateAuctionPage() {
       return;
     }
 
-    // Calculate endTime in milliseconds (minutes * 60 * 1000)
     const endTime = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+    const toastId = toast.loading('Publishing auction to database...');
 
     setIsPending(true);
     try {
-      createAuction({
-        title: title.trim(),
-        category,
-        description: description.trim(),
-        startingPrice: startPrice,
-        minIncrement: 5,
-        endTime,
-        images: imageUrls,
-        sellerId: user.id,
-        sellerName: user.name,
-        sellerAvatar: user.avatar,
+      const res = await fetch('/api/auctions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          category,
+          description: description.trim(),
+          startingBid: startPrice,
+          minIncrement: 5,
+          endTime,
+          images: imageUrls,
+          sellerId: user.id,
+        }),
       });
 
-      toast.success('Auction published successfully!');
-      router.push('/seller/dashboard');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create auction');
+      }
+
+      toast.success('Auction published successfully!', { id: toastId });
+      router.push(`/auction/${data.auction.id}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create auction.');
+      toast.error(error instanceof Error ? error.message : 'Failed to create auction.', {
+        id: toastId,
+      });
       setIsPending(false);
     }
   };

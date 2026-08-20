@@ -46,19 +46,16 @@ export default function AuctionBiddingCard({
 
   const minBidAllowed = currentHighestBid + minIncrement;
 
-  // Compute 5-minute minimum duration boundary
-  const totalMinutesLeft = timeLeft.hours * 60 + timeLeft.minutes;
-  const isExpiredOrTooShort = timeLeft.isEnded || totalMinutesLeft < 5;
+  // Bidding is active as long as the timer has not completely expired
+  const isExpired = timeLeft.isEnded;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 0. Time duration validation (< 5 mins or ended)
-    if (isExpiredOrTooShort) {
+    // 0. Time duration validation
+    if (isExpired) {
       toast.error('Bidding Closed!', {
-        description: timeLeft.isEnded
-          ? 'This auction has ended.'
-          : 'Bidding is locked when fewer than 5 minutes remain on an auction.',
+        description: 'This auction has ended.',
       });
       return;
     }
@@ -183,7 +180,7 @@ export default function AuctionBiddingCard({
                   step="0.01"
                   min={minBidAllowed}
                   value={bidInput}
-                  disabled={isExpiredOrTooShort}
+                  disabled={isExpired}
                   onChange={(e) => setBidInput(e.target.value)}
                   placeholder={minBidAllowed.toFixed(2)}
                   className="w-full pl-7 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-purple-600 outline-none disabled:bg-slate-50 disabled:cursor-not-allowed"
@@ -193,17 +190,17 @@ export default function AuctionBiddingCard({
 
             <button
               type="submit"
-              disabled={isExpiredOrTooShort}
+              disabled={isExpired}
               className={`w-full font-bold py-3 rounded-xl text-xs transition shadow-md ${
-                isExpiredOrTooShort
+                isExpired
                   ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
                   : user
                   ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20'
                   : 'bg-slate-900 hover:bg-slate-800 text-white'
               }`}
             >
-              {isExpiredOrTooShort
-                ? 'Bidding Closed (< 5m remaining)'
+              {isExpired
+                ? 'Bidding Closed'
                 : user
                 ? 'Place Bid Now'
                 : 'Sign In to Place Bid'}

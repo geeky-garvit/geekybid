@@ -14,6 +14,7 @@ export async function POST(
       return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
     }
 
+    // Atomic Upsert viewer session in PostgreSQL via Prisma
     const viewer = await prisma.auctionViewer.upsert({
       where: {
         auctionId_sessionId: {

@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import clientPromise from '@/lib/mongodb';
-import { Auction } from '@/types/auction';
-
-const DB_NAME = process.env.MONGODB_DB || 'auctions_db';
+import { prisma } from '@/lib/db';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id: auctionId } = await params;
     const body = await request.json();
-    const { amount, bidderId, bidderName } = body;
+    const { amount, bidderId } = body;
 
-    // 1. Basic validation
+    // 1. Basic input validation
     if (!amount || typeof amount !== 'number' || amount <= 0) {
       return NextResponse.json(
         { success: false, error: 'A valid bid amount greater than 0 is required.' },
@@ -21,106 +18,103 @@ export async function POST(
       );
     }
 
-    if (!bidderId || !bidderName) {
+    if (!bidderId) {
       return NextResponse.json(
-        { success: false, error: 'Bidder information (bidderId and bidderName) is required.' },
+        { success: false, error: 'Bidder ID (bidderId) is required.' },
         { status: 400 }
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db(DB_NAME);
-    const collection = db.collection<Auction>('auctions');
-
-    const newBid = {
-      id: `bid_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      amount,
-      bidderId,
-      bidderName,
-      timestamp: new Date(),
-    };
-
-    // 2. Atomic Find and Update
-    // Conditions enforced atomically:
-    // - Item ID matches
-    // - Status is live
-    // - End time has not passed
-    // - New bid amount is GREATER than current highest bid
-    const updatedAuction = await collection.findOneAndUpdate(
-      {
-        $and: [
-          { $or: [{ id: id }, { _id: id as any }] },
-          { status: 'live' },
-          { endTime: { $gt: new Date() } },
-          {
-            $expr: {
-              $gt: [amount, '$currentHighestBid'],
-            },
-          },
-        ],
-      },
-      {
-        $set: {
-          currentHighestBid: amount,
+    // 2. Atomic PostgreSQL Transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Find auction within current transaction lock
+      const existingAuction = await tx.auction.findUnique({
+        where: { id: auctionId },
+        include: {
+          bids: true,
         },
-        $inc: {
-          bidsCount: 1,
-        },
-        $push: {
-          bids: newBid as any,
-        },
-      },
-      { returnDocument: 'after' }
-    );
-
-    // 3. Handle unsuccessful update (bid rejected or auction unavailable)
-    if (!updatedAuction) {
-      // Check current auction state to return specific error reason
-      const existingAuction = await collection.findOne({
-        $or: [{ id: id }, { _id: id as any }],
       });
 
       if (!existingAuction) {
-        return NextResponse.json(
-          { success: false, error: 'Auction not found.' },
-          { status: 404 }
-        );
+        throw { status: 404, message: 'Auction not found.' };
       }
 
-      if (existingAuction.status !== 'live' || new Date(existingAuction.endTime) <= new Date()) {
-        return NextResponse.json(
-          { success: false, error: 'This auction has already ended.' },
-          { status: 400 }
-        );
+      // Check auction status and expiration
+      const isEnded =
+        existingAuction.status !== 'ACTIVE' ||
+        new Date(existingAuction.endTime) <= new Date();
+
+      if (isEnded) {
+        throw { status: 400, message: 'This auction has already ended.' };
       }
 
-      if (amount <= existingAuction.currentHighestBid) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Bid must be higher than the current highest bid ($${existingAuction.currentHighestBid}).`,
-            currentHighestBid: existingAuction.currentHighestBid,
+      // Validate minimum bid increment requirements
+      const minRequired = existingAuction.currentPrice + existingAuction.minIncrement;
+      if (amount < minRequired) {
+        throw {
+          status: 409,
+          message: `Bid must be at least $${minRequired.toFixed(2)} (Current high bid: $${existingAuction.currentPrice.toFixed(2)} + min increment: $${existingAuction.minIncrement.toFixed(2)}).`,
+        };
+      }
+
+      // Create new Bid record in PostgreSQL
+      const newBid = await tx.bid.create({
+        data: {
+          amount,
+          auctionId,
+          userId: bidderId,
+        },
+        include: {
+          user: {
+            select: { name: true, avatar: true },
           },
-          { status: 409 } // 409 Conflict
-        );
-      }
+        },
+      });
 
-      return NextResponse.json(
-        { success: false, error: 'Failed to place bid. Please try again.' },
-        { status: 400 }
-      );
-    }
+      // Update Auction with new highest bid & price
+      const updatedAuction = await tx.auction.update({
+        where: { id: auctionId },
+        data: {
+          currentPrice: amount,
+          highestBidderId: bidderId,
+        },
+        include: {
+          bids: true,
+        },
+      });
+
+      return { newBid, updatedAuction };
+    });
 
     return NextResponse.json({
       success: true,
       message: 'Bid placed successfully!',
       data: {
-        bid: newBid,
-        auction: updatedAuction,
+        bid: {
+          id: result.newBid.id,
+          amount: result.newBid.amount,
+          bidderId: result.newBid.userId,
+          bidderName: result.newBid.user.name,
+          timestamp: result.newBid.timestamp,
+        },
+        auction: {
+          id: result.updatedAuction.id,
+          currentHighestBid: result.updatedAuction.currentPrice,
+          bidsCount: result.updatedAuction.bids.length,
+          status: result.updatedAuction.status,
+        },
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error placing bid:', error);
+
+    if (error?.status && error?.message) {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: error.status }
+      );
+    }
+
     return NextResponse.json(
       { success: false, error: 'Internal server error while processing bid.' },
       { status: 500 }
