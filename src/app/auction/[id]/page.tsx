@@ -9,6 +9,8 @@ import { useCart } from '@/context/CartContext';
 import AuctionGallery from './components/AuctionGallery';
 import AuctionBiddingCard from './components/AuctionBiddingCard';
 import AuctionBidHistory, { Bid } from './components/AuctionBidHistory';
+import { useAuctionLiveViewers } from '@/hooks/useAuctionLiveViewers';
+
 
 export default function AuctionDetailPage({
   params,
@@ -31,6 +33,8 @@ export default function AuctionDetailPage({
     seconds: 0,
     isEnded: false,
   });
+
+  const { liveViewers } = useAuctionLiveViewers(auction?.id, user?.id);
 
   const syncStoreData = useCallback(() => {
     const foundAuction = getAuctionById(id);
@@ -183,6 +187,7 @@ export default function AuctionDetailPage({
             timeLeft={timeLeft}
             onPlaceBid={handlePlaceBid}
             onAddToCart={handleAddToCart}
+            liveViewers={liveViewers}
           />
           <AuctionBidHistory bids={bidsHistory} />
         </div>
