@@ -14,21 +14,24 @@ export async function POST(
             return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
         }
 
-        const viewer = await prisma.auctionViewer.update({
+        const viewer = await prisma.auctionViewer.upsert({
             where: {
                 auctionId_sessionId: {
                     auctionId,
                     sessionId,
                 },
             },
-            data: {
+            update: {
                 lastSeen: new Date(),
+            },
+            create: {
+                auctionId,
+                sessionId,
             },
         });
 
         return NextResponse.json({ success: true, viewer });
     } catch (error) {
-        // If record doesn't exist yet, handle gracefully
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Failed to update heartbeat' },
             { status: 500 }

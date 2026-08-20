@@ -43,7 +43,6 @@ model Auction {
   highestBidderId String?
 
   bids            Bid[]
-  viewers         AuctionViewer[]
 }
 
 model Bid {
@@ -100,9 +99,8 @@ model AuctionViewer {
   sessionId  String
   lastSeen   DateTime @updatedAt
 
-  auction    Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
-
   @@unique([auctionId, sessionId])
   @@index([auctionId])
   @@index([lastSeen])
 }
+
