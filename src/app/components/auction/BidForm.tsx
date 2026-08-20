@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 
 export interface Bid {
@@ -36,7 +37,6 @@ export default function BidForm({
 
   const minAllowed = highestBid + minIncrement;
   const [amount, setAmount] = useState(minAllowed);
-  const [status, setStatus] = useState<{ success: boolean; text: string } | null>(null);
 
   const maskName = (name: string) => {
     if (!name || name.length <= 2) return 'a***r';
@@ -45,19 +45,23 @@ export default function BidForm({
 
   const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStatus(null);
 
-    // 1. Unauthenticated users redirected to login
+    // 1. Unauthenticated users get Sonner toast & option to sign in
     if (!user) {
-      router.push(`/login?redirectTo=/auctions/${auctionId}`);
+      toast.error('You must be signed in to place a bid!', {
+        description: 'Please sign in to your account to participate in this auction.',
+        action: {
+          label: 'Sign In',
+          onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
+        },
+      });
       return;
     }
 
-    // 2. Validate bid amount before making request
+    // 2. Validate bid amount
     if (amount < minAllowed) {
-      setStatus({
-        success: false,
-        text: `Bid must be at least $${minAllowed.toFixed(2)}.`,
+      toast.error(`Bid amount too low!`, {
+        description: `Your bid must be at least $${minAllowed.toFixed(2)}.`,
       });
       return;
     }
@@ -65,7 +69,6 @@ export default function BidForm({
     setIsPending(true);
 
     try {
-      // 3. Send request with credentials so JWT cookies are passed to /api/bids
       const res = await fetch('/api/bids', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,14 +83,18 @@ export default function BidForm({
 
       if (!res.ok) {
         if (res.status === 401) {
-          setStatus({ success: false, text: 'Session expired. Please log in again.' });
-          router.push(`/login?redirectTo=/auctions/${auctionId}`);
+          toast.error('Session expired. Please log in again.', {
+            action: {
+              label: 'Sign In',
+              onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
+            },
+          });
           return;
         }
         throw new Error(data.message || `Server error (${res.status})`);
       }
 
-      // 4. Update local state on success
+      // Update state and show success toast
       const newBid: Bid = {
         id: Date.now().toString(),
         bidderName: user.name || 'You',
@@ -99,14 +106,11 @@ export default function BidForm({
       setBidsCount((prev) => prev + 1);
       setHistory((prev) => [newBid, ...prev]);
       setAmount(amount + minIncrement);
-      setStatus({ success: true, text: data.message || 'Bid placed successfully!' });
 
+      toast.success(data.message || 'Bid placed successfully!');
       router.refresh();
     } catch (error) {
-      setStatus({
-        success: false,
-        text: error instanceof Error ? error.message : 'Unable to place bid.',
-      });
+      toast.error(error instanceof Error ? error.message : 'Unable to place bid.');
     } finally {
       setIsPending(false);
     }
@@ -144,7 +148,7 @@ export default function BidForm({
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
               className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none transition disabled:bg-slate-50"
-              disabled={!user || isPending}
+              disabled={isPending}
               required
             />
           </div>
@@ -165,18 +169,6 @@ export default function BidForm({
               : 'Sign In to Place Bid'}
           </button>
         </form>
-
-        {status && (
-          <div
-            className={`p-3 rounded-xl text-xs font-bold ${
-              status.success
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                : 'bg-rose-50 text-rose-700 border border-rose-200'
-            }`}
-          >
-            {status.text}
-          </div>
-        )}
       </div>
 
       {/* Masked Bid History */}

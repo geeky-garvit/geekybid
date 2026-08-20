@@ -2,6 +2,9 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
 
 interface TimeLeft {
   hours: number;
@@ -33,6 +36,9 @@ export default function AuctionBiddingCard({
   onPlaceBid,
   onAddToCart,
 }: AuctionBiddingCardProps) {
+  const { user } = useAuth();
+  const router = useRouter();
+
   const [bidInput, setBidInput] = useState<string>('');
   const [cartAdded, setCartAdded] = useState<boolean>(false);
 
@@ -40,21 +46,63 @@ export default function AuctionBiddingCard({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. Unauthenticated check
+    if (!user) {
+      toast.error('Sign in required to place a bid!', {
+        description: 'Please sign in to your account to participate in this auction.',
+        action: {
+          label: 'Sign In',
+          onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
+        },
+      });
+      return;
+    }
+
     const amount = parseFloat(bidInput);
 
+    // 2. Bid amount validation
     if (isNaN(amount) || amount < minBidAllowed) {
-      alert(`Minimum bid required: $${minBidAllowed.toFixed(2)}`);
+      toast.error('Bid amount too low!', {
+        description: `Minimum bid required is $${minBidAllowed.toFixed(2)}.`,
+      });
       return;
     }
 
     onPlaceBid(amount);
     setBidInput('');
+    toast.success('Bid placed successfully!');
   };
 
   const handleCartClick = () => {
+    if (!user) {
+      toast.error('Sign in required to add items to cart!', {
+        description: 'Please sign in to save items to your shopping cart.',
+        action: {
+          label: 'Sign In',
+          onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
+        },
+      });
+      return;
+    }
+
     onAddToCart();
     setCartAdded(true);
+    toast.success('Added to your cart!');
     setTimeout(() => setCartAdded(false), 2000);
+  };
+
+  const handleBuyNowClick = (e: React.MouseEvent) => {
+    if (!user) {
+      e.preventDefault();
+      toast.error('Sign in required to proceed to checkout!', {
+        description: 'Please sign in to complete your purchase.',
+        action: {
+          label: 'Sign In',
+          onClick: () => router.push(`/login?redirectTo=/checkout?auctionId=${auctionId}`),
+        },
+      });
+    }
   };
 
   return (
@@ -118,9 +166,13 @@ export default function AuctionBiddingCard({
 
             <button
               type="submit"
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl text-xs transition shadow-md shadow-purple-600/20"
+              className={`w-full font-bold py-3 rounded-xl text-xs transition shadow-md ${
+                user
+                  ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white'
+              }`}
             >
-              Place Bid Now
+              {user ? 'Place Bid Now' : 'Sign In to Place Bid'}
             </button>
           </form>
 
@@ -145,6 +197,7 @@ export default function AuctionBiddingCard({
             </button>
             <Link
               href={`/checkout?auctionId=${auctionId}`}
+              onClick={handleBuyNowClick}
               className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2.5 rounded-xl flex items-center justify-center"
             >
               Buy Now
