@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { createAuction } from '@/lib/store';
 import ItemDetailsSection from './components/ItemDetailsSection';
@@ -10,6 +11,7 @@ import PricingSection from './components/PricingSection';
 import ImageUploaderSection from './components/ImageUploaderSection';
 
 const CATEGORIES = ['electronics', 'art', 'collectibles', 'fashion', 'jewelry'];
+const MIN_DURATION_MINUTES = 5;
 
 export default function CreateAuctionPage() {
   const router = useRouter();
@@ -21,7 +23,9 @@ export default function CreateAuctionPage() {
   const [description, setDescription] = useState('');
   const [startingBid, setStartingBid] = useState('');
   const [reservePrice, setReservePrice] = useState('');
-  const [durationDays, setDurationDays] = useState<number>(3);
+  
+  // Changed duration to minutes with default minimum of 5 minutes
+  const [durationMinutes, setDurationMinutes] = useState<number>(5);
 
   const [imageUrls, setImageUrls] = useState<string[]>([
     'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop',
@@ -57,28 +61,37 @@ export default function CreateAuctionPage() {
     e.preventDefault();
 
     if (!title.trim()) {
-      alert('Please enter a listing title.');
+      toast.error('Please enter a listing title.');
+      return;
+    }
+
+    // 1. Duration Validation: Must be at least 5 minutes
+    if (isNaN(durationMinutes) || durationMinutes < MIN_DURATION_MINUTES) {
+      toast.error('Invalid Duration!', {
+        description: `Minimum auction duration must be at least ${MIN_DURATION_MINUTES} minutes.`,
+      });
       return;
     }
 
     const startPrice = parseFloat(startingBid);
     if (isNaN(startPrice) || startPrice <= 0) {
-      alert('Please enter a valid starting price greater than $0.');
+      toast.error('Please enter a valid starting price greater than $0.');
       return;
     }
 
     const parsedReserve = reservePrice ? parseFloat(reservePrice) : undefined;
     if (parsedReserve !== undefined && (isNaN(parsedReserve) || parsedReserve < startPrice)) {
-      alert('Reserve price must be greater than or equal to the starting bid.');
+      toast.error('Reserve price must be greater than or equal to the starting bid.');
       return;
     }
 
     if (imageUrls.length === 0) {
-      alert('Please provide at least one image URL for the auction item.');
+      toast.error('Please provide at least one image URL for the auction item.');
       return;
     }
 
-    const endTime = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+    // Calculate endTime in milliseconds (minutes * 60 * 1000)
+    const endTime = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
 
     setIsPending(true);
     try {
@@ -95,9 +108,10 @@ export default function CreateAuctionPage() {
         sellerAvatar: user.avatar,
       });
 
+      toast.success('Auction published successfully!');
       router.push('/seller/dashboard');
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to create auction.');
+      toast.error(error instanceof Error ? error.message : 'Failed to create auction.');
       setIsPending(false);
     }
   };
@@ -125,8 +139,9 @@ export default function CreateAuctionPage() {
           setTitle={setTitle}
           category={category}
           setCategory={setCategory}
-          durationDays={durationDays}
-          setDurationDays={setDurationDays}
+          durationMinutes={durationMinutes}
+          setDurationMinutes={setDurationMinutes}
+          minDurationMinutes={MIN_DURATION_MINUTES}
           description={description}
           setDescription={setDescription}
           categories={CATEGORIES}

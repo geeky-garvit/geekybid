@@ -58,7 +58,7 @@ export default function AuctionBiddingCard({
       toast.error('Bidding Closed!', {
         description: timeLeft.isEnded
           ? 'This auction has ended.'
-          : 'Bidding is disabled when fewer than 5 minutes remain.',
+          : 'Bidding is locked when fewer than 5 minutes remain on an auction.',
       });
       return;
     }

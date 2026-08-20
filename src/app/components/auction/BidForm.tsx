@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 
 export interface Bid {
@@ -17,6 +18,7 @@ interface Props {
   minIncrement: number;
   initialBidsCount: number;
   initialHistory: Bid[];
+  endTime?: string | Date; // Added endTime to validate expiration
 }
 
 export default function BidForm({
@@ -25,6 +27,7 @@ export default function BidForm({
   minIncrement,
   initialBidsCount,
   initialHistory,
+  endTime,
 }: Props) {
   const router = useRouter();
   const { user } = useAuth();
@@ -36,7 +39,9 @@ export default function BidForm({
 
   const minAllowed = highestBid + minIncrement;
   const [amount, setAmount] = useState(minAllowed);
-  const [status, setStatus] = useState<{ success: boolean; text: string } | null>(null);
+
+  // Check if auction is active and has valid time remaining
+  const isAuctionExpired = endTime ? new Date(endTime).getTime() <= Date.now() : false;
 
   const maskName = (name: string) => {
     if (!name || name.length <= 2) return 'a***r';
@@ -45,19 +50,31 @@ export default function BidForm({
 
   const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStatus(null);
 
-    // 1. Unauthenticated users redirected to login
-    if (!user) {
-      router.push(`/login?redirectTo=/auctions/${auctionId}`);
+    // 0. Check auction expiration
+    if (isAuctionExpired) {
+      toast.error('Auction Has Ended!', {
+        description: 'You can no longer place bids on this item.',
+      });
       return;
     }
 
-    // 2. Validate bid amount before making request
+    // 1. Unauthenticated users get Sonner toast & option to sign in
+    if (!user) {
+      toast.error('You must be signed in to place a bid!', {
+        description: 'Please sign in to your account to participate in this auction.',
+        action: {
+          label: 'Sign In',
+          onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
+        },
+      });
+      return;
+    }
+
+    // 2. Validate bid amount
     if (amount < minAllowed) {
-      setStatus({
-        success: false,
-        text: `Bid must be at least $${minAllowed.toFixed(2)}.`,
+      toast.error(`Bid amount too low!`, {
+        description: `Your bid must be at least $${minAllowed.toFixed(2)}.`,
       });
       return;
     }
@@ -65,7 +82,6 @@ export default function BidForm({
     setIsPending(true);
 
     try {
-      // 3. Send request with credentials so JWT cookies are passed to /api/bids
       const res = await fetch('/api/bids', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,14 +96,18 @@ export default function BidForm({
 
       if (!res.ok) {
         if (res.status === 401) {
-          setStatus({ success: false, text: 'Session expired. Please log in again.' });
-          router.push(`/login?redirectTo=/auctions/${auctionId}`);
+          toast.error('Session expired. Please log in again.', {
+            action: {
+              label: 'Sign In',
+              onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
+            },
+          });
           return;
         }
         throw new Error(data.message || `Server error (${res.status})`);
       }
 
-      // 4. Update local state on success
+      // Update state and show success toast
       const newBid: Bid = {
         id: Date.now().toString(),
         bidderName: user.name || 'You',
@@ -99,14 +119,11 @@ export default function BidForm({
       setBidsCount((prev) => prev + 1);
       setHistory((prev) => [newBid, ...prev]);
       setAmount(amount + minIncrement);
-      setStatus({ success: true, text: data.message || 'Bid placed successfully!' });
 
+      toast.success(data.message || 'Bid placed successfully!');
       router.refresh();
     } catch (error) {
-      setStatus({
-        success: false,
-        text: error instanceof Error ? error.message : 'Unable to place bid.',
-      });
+      toast.error(error instanceof Error ? error.message : 'Unable to place bid.');
     } finally {
       setIsPending(false);
     }
@@ -144,39 +161,31 @@ export default function BidForm({
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
               className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none transition disabled:bg-slate-50"
-              disabled={!user || isPending}
+              disabled={isPending || isAuctionExpired}
               required
             />
           </div>
 
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isPending || isAuctionExpired}
             className={`w-full font-bold py-3 rounded-xl transition shadow-sm ${
-              user
+              isAuctionExpired
+                ? 'bg-red-100 text-red-600 cursor-not-allowed'
+                : user
                 ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20'
                 : 'bg-slate-900 hover:bg-slate-800 text-white'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {isPending
+            {isAuctionExpired
+              ? 'Auction Ended'
+              : isPending
               ? 'Placing Bid...'
               : user
               ? 'Place Bid'
               : 'Sign In to Place Bid'}
           </button>
         </form>
-
-        {status && (
-          <div
-            className={`p-3 rounded-xl text-xs font-bold ${
-              status.success
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                : 'bg-rose-50 text-rose-700 border border-rose-200'
-            }`}
-          >
-            {status.text}
-          </div>
-        )}
       </div>
 
       {/* Masked Bid History */}
