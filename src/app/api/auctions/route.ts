@@ -1,97 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
-import clientPromise from '@/lib/mongodb';
-import { Filter, Sort } from 'mongodb';
-import { Auction } from '@/types/auction';
-import { getAuctionsQuerySchema } from '@/lib/validation';
-
-const DB_NAME = process.env.MONGODB_DB || 'auctions_db';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
-    // 1. Extract raw params
-    const rawParams = {
-      search: searchParams.get('search'),
-      category: searchParams.get('category'),
-      status: searchParams.get('status'),
-      sortBy: searchParams.get('sortBy'),
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
-    };
+    const search = searchParams.get('search')?.trim() || '';
+    const category = searchParams.get('category');
+    const status = searchParams.get('status') || 'ACTIVE';
+    const sortBy = searchParams.get('sortBy') || 'endingSoon';
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const limit = Math.max(1, parseInt(searchParams.get('limit') || '10', 10));
 
-    // Filter out null/undefined keys before validation
-    const cleanParams = Object.fromEntries(
-      Object.entries(rawParams).filter(([_, v]) => v !== null && v !== undefined)
-    );
-
-    // 2. Validate with Zod
-    const validationResult = getAuctionsQuerySchema.safeParse(cleanParams);
-
-    if (!validationResult.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid query parameters',
-          details: validationResult.error.flatten().fieldErrors,
-        },
-        { status: 400 }
-      );
-    }
-
-    const { search, category, status, sortBy, page, limit } = validationResult.data;
-
-    // 3. Connect to MongoDB
-    const client = await clientPromise;
-    const db = client.db(DB_NAME);
-    const collection = db.collection<Auction>('auctions');
-    const query: Filter<Auction> = {};
+    // Construct Prisma where filter
+    const where: any = {};
 
     if (status !== 'all') {
-      query.status = status as Auction['status'];
+      where.status = status;
     }
 
     if (category && category !== 'all') {
-      query.category = category as Auction['category'];
+      where.category = { equals: category, mode: 'insensitive' };
     }
 
-    if (search && search.trim() !== '') {
-      query.$text = { $search: search.trim() };
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
     }
 
-    // 4. Construct Sort Options
-    let sortOption: Sort = {};
+    // Construct Prisma orderBy
+    let orderBy: any = {};
     switch (sortBy) {
       case 'endingSoon':
-        sortOption = { endTime: 1 };
+        orderBy = { endTime: 'asc' };
         break;
       case 'priceLow':
-        sortOption = { currentHighestBid: 1 };
+        orderBy = { currentPrice: 'asc' };
         break;
       case 'priceHigh':
-        sortOption = { currentHighestBid: -1 };
-        break;
-      case 'mostBids':
-        sortOption = { bidsCount: -1 };
+        orderBy = { currentPrice: 'desc' };
         break;
       case 'newest':
-        sortOption = { createdAt: -1 };
+        orderBy = { createdAt: 'desc' };
         break;
       default:
-        sortOption = { endTime: 1 };
+        orderBy = { endTime: 'asc' };
     }
 
     const skip = (page - 1) * limit;
 
-    // 5. Execute DB Query
     const [auctions, total] = await Promise.all([
-      collection
-        .find(query)
-        .sort(sortOption)
-        .skip(skip)
-        .limit(limit)
-        .toArray(),
-      collection.countDocuments(query),
+      prisma.auction.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: {
+          seller: { select: { name: true, avatar: true } },
+          _count: { select: { bids: true } },
+        },
+      }),
+      prisma.auction.count({ where }),
     ]);
 
     return NextResponse.json({
@@ -104,7 +75,7 @@ export async function GET(request: NextRequest) {
         totalPages: Math.ceil(total / limit),
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to fetch auctions:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch auctions' },

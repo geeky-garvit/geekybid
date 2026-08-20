@@ -7,8 +7,9 @@ interface ItemDetailsSectionProps {
   setTitle: (val: string) => void;
   category: string;
   setCategory: (val: string) => void;
-  durationDays: number;
-  setDurationDays: (val: number) => void;
+  durationMinutes: number;
+  setDurationMinutes: (val: number) => void;
+  minDurationMinutes?: number;
   description: string;
   setDescription: (val: string) => void;
   categories: string[];
@@ -19,8 +20,9 @@ export default function ItemDetailsSection({
   setTitle,
   category,
   setCategory,
-  durationDays,
-  setDurationDays,
+  durationMinutes,
+  setDurationMinutes,
+  minDurationMinutes = 5,
   description,
   setDescription,
   categories,
@@ -69,15 +71,19 @@ export default function ItemDetailsSection({
               Auction Duration *
             </label>
             <select
-              value={durationDays}
-              onChange={(e) => setDurationDays(Number(e.target.value))}
+              value={durationMinutes}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setDurationMinutes(val < minDurationMinutes ? minDurationMinutes : val);
+              }}
               className="w-full p-2.5 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-purple-600 bg-white"
             >
-              <option value={1}>1 Day (Express)</option>
-              <option value={3}>3 Days (Recommended)</option>
-              <option value={5}>5 Days</option>
-              <option value={7}>7 Days (1 Week)</option>
-              <option value={14}>14 Days (Extended)</option>
+              <option value={5}>5 Minutes (Flash Blitz)</option>
+              <option value={15}>15 Minutes</option>
+              <option value={60}>1 Hour</option>
+              <option value={1440}>1 Day (Express)</option>
+              <option value={4320}>3 Days (Recommended)</option>
+              <option value={10080}>7 Days (1 Week)</option>
             </select>
           </div>
         </div>

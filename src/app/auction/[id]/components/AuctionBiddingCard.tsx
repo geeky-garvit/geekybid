@@ -44,8 +44,22 @@ export default function AuctionBiddingCard({
 
   const minBidAllowed = currentHighestBid + minIncrement;
 
+  // Calculate total remaining time in minutes
+  const totalMinutesLeft = timeLeft.hours * 60 + timeLeft.minutes;
+  const isExpiredOrTooShort = timeLeft.isEnded || totalMinutesLeft < 5;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 0. Time duration check (Minimum 5 minutes requirement)
+    if (isExpiredOrTooShort) {
+      toast.error('Bidding Closed!', {
+        description: timeLeft.isEnded
+          ? 'This auction has ended.'
+          : 'Bidding is locked when less than 5 minutes remain on an auction.',
+      });
+      return;
+    }
 
     // 1. Unauthenticated check
     if (!user) {
@@ -71,7 +85,6 @@ export default function AuctionBiddingCard({
 
     onPlaceBid(amount);
     setBidInput('');
-    toast.success('Bid placed successfully!');
   };
 
   const handleCartClick = () => {
@@ -88,7 +101,6 @@ export default function AuctionBiddingCard({
 
     onAddToCart();
     setCartAdded(true);
-    toast.success('Added to your cart!');
     setTimeout(() => setCartAdded(false), 2000);
   };
 
@@ -114,6 +126,7 @@ export default function AuctionBiddingCard({
         <h1 className="text-xl font-black text-slate-900 mt-1">{title}</h1>
       </div>
 
+      {/* Countdown Timer Display */}
       <div className="bg-purple-950 text-white rounded-xl p-4 flex items-center justify-between">
         <div>
           <span className="text-[10px] uppercase font-bold text-purple-300 block">
@@ -143,6 +156,7 @@ export default function AuctionBiddingCard({
         </span>
       </div>
 
+      {/* Bidding Controls */}
       {!timeLeft.isEnded ? (
         <div className="space-y-4">
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -157,22 +171,30 @@ export default function AuctionBiddingCard({
                   step="0.01"
                   min={minBidAllowed}
                   value={bidInput}
+                  disabled={isExpiredOrTooShort}
                   onChange={(e) => setBidInput(e.target.value)}
                   placeholder={minBidAllowed.toFixed(2)}
-                  className="w-full pl-7 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-purple-600 outline-none"
+                  className="w-full pl-7 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-purple-600 outline-none disabled:bg-slate-50 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
 
             <button
               type="submit"
+              disabled={isExpiredOrTooShort}
               className={`w-full font-bold py-3 rounded-xl text-xs transition shadow-md ${
-                user
+                isExpiredOrTooShort
+                  ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
+                  : user
                   ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20'
                   : 'bg-slate-900 hover:bg-slate-800 text-white'
               }`}
             >
-              {user ? 'Place Bid Now' : 'Sign In to Place Bid'}
+              {isExpiredOrTooShort
+                ? 'Bidding Closed (< 5m remaining)'
+                : user
+                ? 'Place Bid Now'
+                : 'Sign In to Place Bid'}
             </button>
           </form>
 

@@ -18,6 +18,7 @@ interface Props {
   minIncrement: number;
   initialBidsCount: number;
   initialHistory: Bid[];
+  endTime?: string | Date; // Added endTime to validate expiration
 }
 
 export default function BidForm({
@@ -26,6 +27,7 @@ export default function BidForm({
   minIncrement,
   initialBidsCount,
   initialHistory,
+  endTime,
 }: Props) {
   const router = useRouter();
   const { user } = useAuth();
@@ -38,6 +40,9 @@ export default function BidForm({
   const minAllowed = highestBid + minIncrement;
   const [amount, setAmount] = useState(minAllowed);
 
+  // Check if auction is active and has valid time remaining
+  const isAuctionExpired = endTime ? new Date(endTime).getTime() <= Date.now() : false;
+
   const maskName = (name: string) => {
     if (!name || name.length <= 2) return 'a***r';
     return `${name[0]}***${name[name.length - 1]}`;
@@ -45,6 +50,14 @@ export default function BidForm({
 
   const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 0. Check auction expiration
+    if (isAuctionExpired) {
+      toast.error('Auction Has Ended!', {
+        description: 'You can no longer place bids on this item.',
+      });
+      return;
+    }
 
     // 1. Unauthenticated users get Sonner toast & option to sign in
     if (!user) {
@@ -148,21 +161,25 @@ export default function BidForm({
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
               className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-purple-600 outline-none transition disabled:bg-slate-50"
-              disabled={isPending}
+              disabled={isPending || isAuctionExpired}
               required
             />
           </div>
 
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isPending || isAuctionExpired}
             className={`w-full font-bold py-3 rounded-xl transition shadow-sm ${
-              user
+              isAuctionExpired
+                ? 'bg-red-100 text-red-600 cursor-not-allowed'
+                : user
                 ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20'
                 : 'bg-slate-900 hover:bg-slate-800 text-white'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {isPending
+            {isAuctionExpired
+              ? 'Auction Ended'
+              : isPending
               ? 'Placing Bid...'
               : user
               ? 'Place Bid'
