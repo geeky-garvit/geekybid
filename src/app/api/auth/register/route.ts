@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
@@ -15,7 +17,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, password } = body;
+    // 🔑 Fix: Normalize email
+    const email = body.email.toLowerCase().trim();
+    const { name, password } = body;
 
     // 1. Check if account already exists
     const existing = await findUserByEmail(email);
@@ -36,13 +40,13 @@ export async function POST(request: NextRequest) {
       details: `Account created for ${user.name} (${user.email})`,
     });
 
-    // 4. Provision default Seller Community Hub in 'communities' collection
+    // 4. Provision default Seller Community Hub
     await createSellerCommunity(user.id, `${user.name}'s Collector Hub`);
 
     // 5. Generate signed JWT session token
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'fallback_secret',
+      { userId: user.id, email: user.email.toLowerCase(), role: user.role },
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -56,7 +60,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7,
       path: '/',
     });
 

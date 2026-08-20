@@ -5,6 +5,8 @@ import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
@@ -16,7 +18,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password } = body;
+    // 🔑 Fix: Normalize email
+    const email = body.email.toLowerCase().trim();
+    const { password } = body;
 
     // 1. Fetch user from MongoDB
     const userDoc = await findUserByEmail(email);
@@ -43,10 +47,10 @@ export async function POST(request: NextRequest) {
       details: `Logged in from IP: ${request.headers.get('x-forwarded-for') || 'localhost'}`,
     });
 
-    // 4. Issue JWT Token
+    // 4. Issue JWT Token (pass normalized email)
     const token = jwt.sign(
-      { userId: userDoc.id, email: userDoc.email, role: userDoc.role },
-      process.env.JWT_SECRET || 'fallback_secret',
+      { userId: userDoc.id, email: userDoc.email.toLowerCase(), role: userDoc.role },
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
