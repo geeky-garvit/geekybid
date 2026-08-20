@@ -43,6 +43,7 @@ model Auction {
   highestBidderId String?
 
   bids            Bid[]
+  viewers         AuctionViewer[]
 }
 
 model Bid {
@@ -91,4 +92,17 @@ model CommunityMember {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([communityId, userId])
+}
+
+model AuctionViewer {
+  id         String   @id @default(cuid())
+  auctionId  String
+  sessionId  String
+  lastSeen   DateTime @updatedAt
+
+  auction    Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@unique([auctionId, sessionId])
+  @@index([auctionId])
+  @@index([lastSeen])
 }
