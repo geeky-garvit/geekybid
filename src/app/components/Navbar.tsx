@@ -16,8 +16,7 @@ export default function Navbar() {
   const safeCartCount = cartCount ?? 0;
 
   return (
-    <header className="relative bg-white border-none sticky top-0 z-40">
-      {/* Subtle lavender blend at bottom */}
+     <header className="relative bg-white border-none sticky top-0 z-40">{/* Subtle lavender blend at bottom */}
       <div className="absolute inset-x-0 bottom-0 h-2 bg-gradient-to-b from-transparent to-purple-50/60 pointer-events-none" />
 
       <div className="relative max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
