@@ -4,6 +4,8 @@ import { findUserByEmail } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+
 export async function GET(request: NextRequest) {
   try {
     const token = request.cookies.get('token')?.value;
@@ -12,7 +14,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, user: null }, { status: 401 });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as any;
+    // 🔑 Make sure JWT_SECRET matches what was used during login
+    const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
     const userDoc = await findUserByEmail(decoded.email);
 
     if (!userDoc) {
@@ -23,13 +26,15 @@ export async function GET(request: NextRequest) {
       success: true,
       user: {
         id: userDoc.id,
-        name: userDoc.name,
+        name: userDoc.name || '',
         email: userDoc.email,
-        avatar: userDoc.avatar,
-        role: userDoc.role,
+        avatar: userDoc.avatar || '',
+        role: userDoc.role || 'user',
       },
     });
-  } catch {
+  } catch (error) {
+    // Log the error to your console so you can see why verify failed!
+    console.error('Session verify failed:', error);
     return NextResponse.json({ success: false, user: null }, { status: 401 });
   }
 }

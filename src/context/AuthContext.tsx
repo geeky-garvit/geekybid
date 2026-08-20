@@ -44,7 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Fetch session from JWT cookie via /api/auth/me
   const refreshUser = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/me');
+      const res = await fetch('/api/auth/me', {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' },
+        credentials: 'include',
+      });
       const data = await res.json();
 
       if (res.ok && data.success && data.user) {
@@ -55,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setWatchlist([]);
       }
     } catch (err) {
+      console.error('Auth refresh error:', err);
       setUser(null);
       setWatchlist([]);
     } finally {
@@ -66,9 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser();
   }, [refreshUser]);
 
+  // 🔑 FIX: Set isLoaded to true when user logs in so protected pages don't kick them out
   const loginUser = (newUser: User) => {
     setUser(newUser);
     loadUserWatchlist(newUser.id);
+    setIsLoaded(true);
   };
 
   const logout = async () => {
@@ -79,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setUser(null);
       setWatchlist([]);
+      setIsLoaded(true);
       window.location.href = '/login';
     }
   };

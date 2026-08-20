@@ -2,26 +2,39 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { getAuctions, Auction, initializeStore, subscribeToStore } from '@/lib/store';
 import { useState, useEffect } from 'react';
 
 export default function WatchlistPage() {
-  const { watchlist, toggleWatchlist } = useAuth();
+  const { user, watchlist, toggleWatchlist, isLoaded } = useAuth();
+  const router = useRouter();
   const [savedAuctions, setSavedAuctions] = useState<Auction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // 🔑 Guard route: redirect if authentication check finishes and no user exists
   useEffect(() => {
+    if (isLoaded && !user) {
+      router.push('/login?next=%2Fwatchlist');
+    }
+  }, [isLoaded, user, router]);
+
+  useEffect(() => {
+    if (!user) return;
+
     const refresh = () => {
       const allAuctions = getAuctions();
       setSavedAuctions(allAuctions.filter((item) => watchlist.includes(item.id)));
       setIsLoading(false);
     };
+
     initializeStore().then(refresh);
     return subscribeToStore(refresh);
-  }, [watchlist]);
+  }, [watchlist, user]);
 
-  if (isLoading) {
+  // Show skeleton loader while Auth checking or store initializing
+  if (!isLoaded || isLoading || !user) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
         <div className="h-8 w-48 bg-slate-200 animate-pulse rounded-lg" />
@@ -85,7 +98,6 @@ export default function WatchlistPage() {
                 className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between"
               >
                 <div>
-                  {/* Image & Favorite Toggle */}
                   <div className="relative aspect-square w-full bg-slate-100">
                     <Image
                       src={coverImage}
@@ -103,7 +115,6 @@ export default function WatchlistPage() {
                     </button>
                   </div>
 
-                  {/* Details */}
                   <div className="p-4 space-y-1">
                     <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">
                       {item.category || 'Auction'}
@@ -112,7 +123,6 @@ export default function WatchlistPage() {
                   </div>
                 </div>
 
-                {/* Price & Action Footer */}
                 <div className="p-4 pt-3 border-t border-slate-100 mt-2 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] text-slate-400 block font-semibold">
