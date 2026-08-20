@@ -23,6 +23,7 @@ interface AuctionBiddingCardProps {
   timeLeft: TimeLeft;
   onPlaceBid: (amount: number) => void;
   onAddToCart: () => void;
+  liveViewers?: number;
 }
 
 export default function AuctionBiddingCard({
@@ -35,6 +36,7 @@ export default function AuctionBiddingCard({
   timeLeft,
   onPlaceBid,
   onAddToCart,
+  liveViewers,
 }: AuctionBiddingCardProps) {
   const { user } = useAuth();
   const router = useRouter();
@@ -44,19 +46,19 @@ export default function AuctionBiddingCard({
 
   const minBidAllowed = currentHighestBid + minIncrement;
 
-  // Calculate total remaining time in minutes
+  // Compute 5-minute minimum duration boundary
   const totalMinutesLeft = timeLeft.hours * 60 + timeLeft.minutes;
   const isExpiredOrTooShort = timeLeft.isEnded || totalMinutesLeft < 5;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 0. Time duration check (Minimum 5 minutes requirement)
+    // 0. Time duration validation (< 5 mins or ended)
     if (isExpiredOrTooShort) {
       toast.error('Bidding Closed!', {
         description: timeLeft.isEnded
           ? 'This auction has ended.'
-          : 'Bidding is locked when less than 5 minutes remain on an auction.',
+          : 'Bidding is locked when fewer than 5 minutes remain on an auction.',
       });
       return;
     }
@@ -75,7 +77,7 @@ export default function AuctionBiddingCard({
 
     const amount = parseFloat(bidInput);
 
-    // 2. Bid amount validation
+    // 2. Minimum bid value validation
     if (isNaN(amount) || amount < minBidAllowed) {
       toast.error('Bid amount too low!', {
         description: `Minimum bid required is $${minBidAllowed.toFixed(2)}.`,
@@ -126,7 +128,6 @@ export default function AuctionBiddingCard({
         <h1 className="text-xl font-black text-slate-900 mt-1">{title}</h1>
       </div>
 
-      {/* Countdown Timer Display */}
       <div className="bg-purple-950 text-white rounded-xl p-4 flex items-center justify-between">
         <div>
           <span className="text-[10px] uppercase font-bold text-purple-300 block">
@@ -156,7 +157,18 @@ export default function AuctionBiddingCard({
         </span>
       </div>
 
-      {/* Bidding Controls */}
+      {/* Live Viewers Indicator Badge */}
+      {liveViewers !== undefined && liveViewers > 0 && (
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-600 bg-sky-100 px-2.5 py-1 rounded-full border border-sky-200/60 w-fit">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+          </span>
+          <span>👀 {liveViewers} {liveViewers === 1 ? 'person' : 'people'} viewing now</span>
+        </div>
+      )}
+
+      {/* Dynamic Bidding Form Controls */}
       {!timeLeft.isEnded ? (
         <div className="space-y-4">
           <form onSubmit={handleSubmit} className="space-y-3">
