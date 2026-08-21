@@ -87,11 +87,12 @@ export default function CreateAuctionPage() {
     }
 
     const endTime = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
-    const toastId = toast.loading('Publishing auction to database...');
 
     setIsPending(true);
+    const toastId = toast.loading('Saving auction directly to database...');
+
     try {
-      const res = await fetch('/api/auctions', {
+      const response = await fetch('/api/auctions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -106,14 +107,14 @@ export default function CreateAuctionPage() {
         }),
       });
 
-      const data = await res.json();
+      const result = await response.json();
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to create auction');
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to save auction to database.');
       }
 
-      toast.success('Auction published successfully!', { id: toastId });
-      router.push(`/auction/${data.auction.id}`);
+      toast.success('Auction saved to database successfully!', { id: toastId });
+      router.push(`/auction/${result.auction.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create auction.', {
         id: toastId,

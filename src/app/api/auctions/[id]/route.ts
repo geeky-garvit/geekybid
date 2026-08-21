@@ -46,13 +46,15 @@ export async function GET(
       endTime: auction.endTime,
       sellerId: auction.sellerId,
       sellerName: auction.seller?.name || 'Seller',
+      sellerAvatar: auction.seller?.avatar || '',
       bidsCount: auction.bids.length,
       bids: auction.bids.map((b) => ({
         id: b.id,
         amount: b.amount,
         timestamp: b.timestamp,
-        bidderName: b.user.name,
-        bidderAvatar: b.user.avatar,
+        bidderId: b.userId,
+        bidderName: b.user?.name || 'Anonymous',
+        bidderAvatar: b.user?.avatar || '',
       })),
     };
 
