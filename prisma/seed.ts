@@ -1,9 +1,14 @@
 import 'dotenv/config';
-import { prisma } from '../src/lib/prisma';
+import { prisma } from '../src/lib/db';
 import bcrypt from 'bcryptjs';
 
 async function main() {
-  console.log('Seeding Neon database with DummyJSON items...');
+  console.log('Clearing existing records and seeding Neon database...');
+
+  // Clean old records to avoid orphan relationships
+  await prisma.bid.deleteMany({});
+  await prisma.auctionViewer.deleteMany({});
+  await prisma.auction.deleteMany({});
 
   const hashedPassword = await bcrypt.hash('password123', 10);
 
@@ -37,14 +42,13 @@ async function main() {
         minIncrement: 5.0,
         status: 'ACTIVE',
         images: product.images && product.images.length ? product.images : [product.thumbnail],
-        // Random end time between 10 mins and 48 hours
         endTime: new Date(Date.now() + (10 * 60 * 1000 + Math.random() * 172800000)),
         sellerId: seller.id,
       },
     });
   }
 
-  console.log('✅ Seed complete: Products stored in PostgreSQL!');
+  console.log('✅ Seed complete: All items now populated directly in PostgreSQL!');
 }
 
 main()
