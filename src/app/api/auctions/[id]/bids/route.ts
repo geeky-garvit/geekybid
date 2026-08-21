@@ -25,9 +25,25 @@ export async function POST(
       );
     }
 
+    // Ensure bidder exists in database before placing bid
+    const bidderExists = await prisma.user.findUnique({
+      where: { id: bidderId },
+    });
+
+    if (!bidderExists) {
+      await prisma.user.create({
+        data: {
+          id: bidderId,
+          name: 'Bidder',
+          email: `${bidderId}@example.com`,
+          password: '$2a$10$abcdefghijklmnopqrstuu',
+          avatar: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Bidder',
+        },
+      });
+    }
+
     // 2. Atomic PostgreSQL Transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Find auction within current transaction lock
       const existingAuction = await tx.auction.findUnique({
         where: { id: auctionId },
         include: {
@@ -36,10 +52,9 @@ export async function POST(
       });
 
       if (!existingAuction) {
-        throw { status: 404, message: 'Auction not found.' };
+        throw { status: 404, message: 'Auction not found in database.' };
       }
 
-      // Check auction status and expiration
       const isEnded =
         existingAuction.status !== 'ACTIVE' ||
         new Date(existingAuction.endTime) <= new Date();
@@ -48,7 +63,6 @@ export async function POST(
         throw { status: 400, message: 'This auction has already ended.' };
       }
 
-      // Validate minimum bid increment requirements
       const minRequired = existingAuction.currentPrice + existingAuction.minIncrement;
       if (amount < minRequired) {
         throw {
@@ -57,7 +71,6 @@ export async function POST(
         };
       }
 
-      // Create new Bid record in PostgreSQL
       const newBid = await tx.bid.create({
         data: {
           amount,
@@ -71,7 +84,6 @@ export async function POST(
         },
       });
 
-      // Update Auction with new highest bid & price
       const updatedAuction = await tx.auction.update({
         where: { id: auctionId },
         data: {

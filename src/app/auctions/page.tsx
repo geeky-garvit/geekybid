@@ -1,9 +1,10 @@
 import React from 'react';
-import { getAuctions, initializeStore } from '@/lib/store';
+import { prisma } from '@/lib/db';
 import InfiniteAuctionGrid from '@/app/components/auction/InfiniteAuctionGrid';
 import AuctionHorizontalFilter from './components/AuctionSidebarFilter';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 interface SearchParams {
   category?: string;
@@ -20,8 +21,6 @@ export default async function AuctionsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await initializeStore();
-
   const queryParams = await searchParams;
 
   const category = queryParams.category || 'all';
@@ -32,29 +31,99 @@ export default async function AuctionsPage({
   const sortBy = queryParams.sortBy || 'endingSoon';
   const search = queryParams.search || '';
 
-  let items = getAuctions({
-    category: category !== 'all' ? category : undefined,
-    status: status !== 'all' ? status : undefined,
-    search: search || undefined,
+  const whereFilter: any = {};
+
+  if (category !== 'all') {
+    whereFilter.category = { equals: category, mode: 'insensitive' };
+  }
+
+  if (status === 'live' || status === 'ACTIVE') {
+    whereFilter.status = 'ACTIVE';
+  } else if (status !== 'all') {
+    whereFilter.status = status.toUpperCase();
+  }
+
+  if (search.trim()) {
+    whereFilter.OR = [
+      { title: { contains: search, mode: 'insensitive' } },
+      { description: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  if (minPrice !== undefined || maxPrice !== undefined) {
+    whereFilter.currentPrice = {};
+    if (minPrice !== undefined && !isNaN(minPrice)) {
+      whereFilter.currentPrice.gte = minPrice;
+    }
+    if (maxPrice !== undefined && !isNaN(maxPrice)) {
+      whereFilter.currentPrice.lte = maxPrice;
+    }
+  }
+
+  if (endingWithin !== undefined && !isNaN(endingWithin)) {
+    const cutoffDate = new Date(Date.now() + endingWithin * 3600 * 1000);
+    whereFilter.endTime = { lte: cutoffDate };
+  }
+
+  let orderBy: any = { endTime: 'asc' };
+  if (sortBy === 'priceAsc') orderBy = { currentPrice: 'asc' };
+  if (sortBy === 'priceDesc') orderBy = { currentPrice: 'desc' };
+  if (sortBy === 'newest') orderBy = { createdAt: 'desc' };
+
+  const dbAuctions = await prisma.auction.findMany({
+    where: whereFilter,
+    orderBy,
+    include: {
+      seller: { select: { id: true, name: true, avatar: true } },
+      bids: {
+        orderBy: { timestamp: 'desc' },
+        include: { user: { select: { name: true, avatar: true } } },
+      },
+      _count: { select: { bids: true } },
+    },
   });
 
-  if (minPrice !== undefined && !isNaN(minPrice)) {
-    items = items.filter((a) => a.currentHighestBid >= minPrice);
-  }
-  if (maxPrice !== undefined && !isNaN(maxPrice)) {
-    items = items.filter((a) => a.currentHighestBid <= maxPrice);
-  }
-  if (endingWithin !== undefined && !isNaN(endingWithin)) {
-    const cutoffTime = new Date(Date.now() + endingWithin * 3600 * 1000).getTime();
-    items = items.filter((a) => new Date(a.endTime).getTime() <= cutoffTime);
-  }
+  const items = dbAuctions.map((a) => {
+    let mappedStatus: 'live' | 'ended' | 'paid' = 'live';
+    const normalized = a.status.toLowerCase();
 
-  items.sort((a, b) => {
-    if (sortBy === 'endingSoon') return new Date(a.endTime).getTime() - new Date(b.endTime).getTime();
-    if (sortBy === 'priceAsc') return a.currentHighestBid - b.currentHighestBid;
-    if (sortBy === 'priceDesc') return b.currentHighestBid - a.currentHighestBid;
-    if (sortBy === 'mostBids') return b.bidsCount - a.bidsCount;
-    return 0;
+    if (normalized === 'ended' || normalized === 'closed') {
+      mappedStatus = 'ended';
+    } else if (normalized === 'paid' || normalized === 'completed') {
+      mappedStatus = 'paid';
+    } else if (new Date(a.endTime) <= new Date()) {
+      mappedStatus = 'ended';
+    }
+
+    return {
+      id: a.id,
+      title: a.title,
+      description: a.description,
+      category: a.category,
+      startingBid: a.startingBid,
+      startingPrice: a.startingBid,
+      currentHighestBid: a.currentPrice,
+      minIncrement: a.minIncrement,
+      status: mappedStatus,
+      images: a.images,
+      endTime: a.endTime.toISOString(),
+      sellerId: a.sellerId,
+      sellerName: a.seller?.name || 'Seller',
+      sellerAvatar: a.seller?.avatar || '',
+      bidsCount: a._count.bids,
+      history: a.bids.map((b) => {
+        const isoTimeString = b.timestamp.toISOString();
+        return {
+          id: b.id,
+          amount: b.amount,
+          bidderId: b.userId,
+          time: isoTimeString,
+          timestamp: isoTimeString,
+          bidderName: b.user?.name || 'Anonymous',
+          bidderAvatar: b.user?.avatar || '',
+        };
+      }),
+    };
   });
 
   const limit = 8;
@@ -67,7 +136,7 @@ export default async function AuctionsPage({
   return (
     <div className="min-h-screen bg-slate-50">
       <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-        <AuctionHorizontalFilter 
+        <AuctionHorizontalFilter
           search={search}
           category={category}
           status={status}
