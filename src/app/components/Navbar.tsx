@@ -51,6 +51,13 @@ export default function Navbar() {
           </Link>
 
           <Link
+            href="/winners"
+            className="hover:text-purple-600 transition"
+          >
+            Winners
+          </Link>
+
+          <Link
             href="/orders"
             className="hover:text-purple-600 transition"
           >
