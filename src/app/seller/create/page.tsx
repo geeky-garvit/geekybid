@@ -115,7 +115,7 @@ export default function CreateAuctionPage() {
 
       toast.success('Auction saved to database successfully!', { id: toastId });
       router.refresh();
-      router.push(`/auctions/${result.auction.id}`);
+      router.push(`/auction/${result.auction.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create auction.', {
         id: toastId,

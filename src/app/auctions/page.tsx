@@ -33,16 +33,19 @@ export default async function AuctionsPage({
 
   const whereFilter: any = {};
 
+  // Category Filter
   if (category !== 'all') {
     whereFilter.category = { equals: category, mode: 'insensitive' };
   }
 
+  // Status Filter - match ACTIVE / live seamlessly
   if (status === 'live' || status === 'ACTIVE') {
-    whereFilter.status = 'ACTIVE';
+    whereFilter.status = { in: ['ACTIVE', 'active', 'live', 'LIVE'] };
   } else if (status !== 'all') {
-    whereFilter.status = status.toUpperCase();
+    whereFilter.status = { equals: status, mode: 'insensitive' };
   }
 
+  // Search Query
   if (search.trim()) {
     whereFilter.OR = [
       { title: { contains: search, mode: 'insensitive' } },
@@ -50,6 +53,7 @@ export default async function AuctionsPage({
     ];
   }
 
+  // Price Filter
   if (minPrice !== undefined || maxPrice !== undefined) {
     whereFilter.currentPrice = {};
     if (minPrice !== undefined && !isNaN(minPrice)) {
@@ -60,11 +64,13 @@ export default async function AuctionsPage({
     }
   }
 
+  // Time Filter
   if (endingWithin !== undefined && !isNaN(endingWithin)) {
     const cutoffDate = new Date(Date.now() + endingWithin * 3600 * 1000);
     whereFilter.endTime = { lte: cutoffDate };
   }
 
+  // Sorting
   let orderBy: any = { endTime: 'asc' };
   if (sortBy === 'priceAsc') orderBy = { currentPrice: 'asc' };
   if (sortBy === 'priceDesc') orderBy = { currentPrice: 'desc' };
@@ -83,7 +89,8 @@ export default async function AuctionsPage({
     },
   });
 
-  const items = dbAuctions.map((a) => {
+  // Transform and normalize status
+  let items = dbAuctions.map((a) => {
     let mappedStatus: 'live' | 'ended' | 'paid' = 'live';
     const normalized = a.status.toLowerCase();
 
@@ -125,6 +132,11 @@ export default async function AuctionsPage({
       }),
     };
   });
+
+  // Filter out ended items if user explicitly selected live items
+  if (status === 'live') {
+    items = items.filter((item) => item.status === 'live');
+  }
 
   const limit = 8;
   const initialSlice = items.slice(0, limit);

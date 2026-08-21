@@ -7,14 +7,24 @@ export async function POST(
 ) {
   try {
     const { id: auctionId } = await params;
-    const body = await request.json();
-    const { sessionId } = body;
+    const body = await request.json().catch(() => ({}));
+    const sessionId = body.sessionId || request.headers.get('x-session-id') || 'anonymous';
 
-    if (!sessionId) {
-      return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
+    if (!auctionId) {
+      return NextResponse.json({ error: 'Auction ID is required' }, { status: 400 });
     }
 
-    // Atomic Upsert viewer session in PostgreSQL via Prisma
+    // 1. Verify the auction exists before creating a viewer record
+    const auctionExists = await prisma.auction.findUnique({
+      where: { id: auctionId },
+      select: { id: true },
+    });
+
+    if (!auctionExists) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
+
+    // 2. Safe upsert now that FK validation is guaranteed
     const viewer = await prisma.auctionViewer.upsert({
       where: {
         auctionId_sessionId: {
@@ -28,14 +38,15 @@ export async function POST(
       create: {
         auctionId,
         sessionId,
+        lastSeen: new Date(),
       },
     });
 
-    return NextResponse.json({ success: true, viewer });
+    return NextResponse.json({ success: true, viewer }, { status: 200 });
   } catch (error) {
-    console.error('Error registering viewer:', error);
+    console.error('Error tracking auction viewer:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to register viewer' },
+      { error: 'Failed to record viewer' },
       { status: 500 }
     );
   }
