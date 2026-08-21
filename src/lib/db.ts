@@ -158,6 +158,140 @@ export async function getActiveAuctions(category?: string) {
   });
 }
 
+export async function getAuctionResult(id: string) {
+  const auction = await prisma.auction.findUnique({
+    where: {
+      id,
+      status: {
+        in: ['ENDED', 'PAID'],
+      },
+    },
+    include: {
+      bids: {
+        orderBy: {
+          amount: 'desc',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!auction) {
+    return null;
+  }
+
+  const winningBid = auction.bids[0] ?? null;
+
+  return {
+    ...auction,
+    winningBid,
+  };
+}
+
+export async function closeExpiredAuctions() {
+  const expiredAuctions = await prisma.auction.findMany({
+    where: {
+      status: 'ACTIVE',
+      endTime: {
+        lte: new Date(),
+      },
+    },
+    include: {
+      bids: {
+        orderBy: {
+          amount: 'desc',
+        },
+        take: 1,
+      },
+    },
+  });
+
+  for (const auction of expiredAuctions) {
+    const winningBid = auction.bids[0];
+
+    await prisma.auction.update({
+      where: {
+        id: auction.id,
+      },
+      data: {
+        status: 'ENDED',
+
+        // If there was a bid, store the winning bidder.
+        // If there were no bids, keep it null.
+        highestBidderId: winningBid?.userId ?? null,
+
+        // If there was a bid, make sure currentPrice
+        // reflects the winning bid.
+        ...(winningBid
+          ? {
+              currentPrice: winningBid.amount,
+            }
+          : {}),
+      },
+    });
+  }
+
+  return expiredAuctions.length;
+}
+
+export async function getCompletedAuctions() {
+  // First mark expired ACTIVE auctions as ENDED
+  await closeExpiredAuctions();
+
+  // Get ALL completed auctions, including auctions with no bids
+  const auctions = await prisma.auction.findMany({
+    where: {
+      status: {
+        in: ['ENDED', 'PAID'],
+      },
+    },
+    orderBy: {
+      endTime: 'desc',
+    },
+  });
+
+  // Get the users who won auctions
+  const winnerIds = auctions
+    .map((auction) => auction.highestBidderId)
+    .filter((id): id is string => id !== null);
+
+  const winners = await prisma.user.findMany({
+    where: {
+      id: {
+        in: winnerIds,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      avatar: true,
+    },
+  });
+
+  // Create a quick lookup: userId → user
+  const winnerMap = new Map(
+    winners.map((winner) => [winner.id, winner])
+  );
+
+  // Add winner information to each auction
+  return auctions.map((auction) => ({
+    ...auction,
+
+    winner: auction.highestBidderId
+      ? winnerMap.get(auction.highestBidderId) ?? null
+      : null,
+  }));
+}
+
+
 // ---------------- ACTIVITY LOGGING OPERATIONS ----------------
 
 export interface ActivityInput {
