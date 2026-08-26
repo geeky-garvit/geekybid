@@ -58,7 +58,7 @@ function AuctionCard({ item, badgeText, badgeBg }: { item: Auction; badgeText: s
           <span className="text-lg font-black text-purple-950">${item.currentHighestBid.toFixed(2)}</span>
         </div>
         <Link
-          href={`/auctions/${encodeURIComponent(item.id)}`}
+          href={`/auction/${encodeURIComponent(item.id)}`}
           className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
         >
           Place Bid
