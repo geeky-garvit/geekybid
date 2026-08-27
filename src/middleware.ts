@@ -2,20 +2,34 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // Checks for JWT cookie ('token') or user session cookie ('user_session')
+  const { pathname, search } = request.nextUrl;
+
+  // Retrieve auth token (supports NextAuth JWT tokens, standard tokens, or custom session cookies)
   const token =
     request.cookies.get('token')?.value ||
-    request.cookies.get('user_session')?.value;
+    request.cookies.get('user_session')?.value ||
+    request.cookies.get('next-auth.session-token')?.value ||
+    request.cookies.get('__Secure-next-auth.session-token')?.value;
 
+  // If authenticated, allow request to proceed
   if (token) {
+    // If authenticated user tries to access /login or /register, redirect to dashboard
+    if (pathname === '/login' || pathname === '/register') {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
     return NextResponse.next();
   }
 
-  // Redirect to /login with target route using 'redirectTo'
-  const targetPath = request.nextUrl.pathname + request.nextUrl.search;
+  // Prevent infinite redirect if already on login page
+  if (pathname === '/login') {
+    return NextResponse.next();
+  }
+
+  // Sanitize target destination URL to protect against open-redirect vulnerability
+  const rawTarget = pathname + search;
+  const targetPath = rawTarget.startsWith('/') ? rawTarget : '/dashboard';
+
   const loginUrl = new URL('/login', request.url);
-  
-  // Sets both parameters so any login page logic works consistently
   loginUrl.searchParams.set('redirectTo', targetPath);
   loginUrl.searchParams.set('next', targetPath);
 

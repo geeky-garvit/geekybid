@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🔑 Fix: Normalize email
+    // Normalize email
     const email = body.email.toLowerCase().trim();
     const { name, password } = body;
 
@@ -30,10 +30,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Persist User document in MongoDB 'users' collection
+    // 2. Persist User in PostgreSQL via Prisma
     const user = await createUser({ name, email, passwordRaw: password });
 
-    // 3. Log account creation in MongoDB 'activity' collection
+    // 3. Log account creation in activity table
     await logUserActivity({
       userId: user.id,
       action: 'USER_REGISTERED',
@@ -43,9 +43,15 @@ export async function POST(request: NextRequest) {
     // 4. Provision default Seller Community Hub
     await createSellerCommunity(user.id, `${user.name}'s Collector Hub`);
 
-    // 5. Generate signed JWT session token
+    // 5. Generate signed JWT session token (includes name, email, avatar, role)
     const token = jwt.sign(
-      { userId: user.id, email: user.email.toLowerCase(), role: user.role },
+      {
+        userId: user.id,
+        email: user.email.toLowerCase(),
+        name: user.name,
+        avatar: user.avatar,
+        role: user.role,
+      },
       JWT_SECRET,
       { expiresIn: '7d' }
     );

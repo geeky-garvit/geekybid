@@ -1,39 +1,53 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { getAuctions, Auction, initializeStore, subscribeToStore } from '@/lib/store';
 import { useState, useEffect } from 'react';
+import AuctionCard from '@/app/components/auction/AuctionCard';
 
 export default function WatchlistPage() {
-  const { user, watchlist, toggleWatchlist, isLoaded } = useAuth();
+  const { user, isLoaded } = useAuth();
   const router = useRouter();
-  const [savedAuctions, setSavedAuctions] = useState<Auction[]>([]);
+  const [savedAuctions, setSavedAuctions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 🔑 Guard route: redirect if authentication check finishes and no user exists
+  // Guard route: redirect if unauthenticated
   useEffect(() => {
     if (isLoaded && !user) {
       router.push('/login?next=%2Fwatchlist');
     }
   }, [isLoaded, user, router]);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const refresh = () => {
-      const allAuctions = getAuctions();
-      setSavedAuctions(allAuctions.filter((item) => watchlist.includes(item.id)));
+  const fetchWatchlist = async () => {
+    if (!user?.id) return;
+    try {
+      setIsLoading(true);
+      const res = await fetch(`/api/watchlist?userId=${user.id}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success) {
+        setSavedAuctions(data.watchlist);
+      }
+    } catch (err) {
+      console.error('Failed to load saved auctions:', err);
+    } finally {
       setIsLoading(false);
-    };
+    }
+  };
 
-    initializeStore().then(refresh);
-    return subscribeToStore(refresh);
-  }, [watchlist, user]);
+  useEffect(() => {
+    if (user?.id) {
+      fetchWatchlist();
+    }
+  }, [user?.id]);
 
-  // Show skeleton loader while Auth checking or store initializing
+  // Remove auction instantly from local state when un-watchlisted
+  const handleWatchlistToggle = (auctionId: string, isWatchlisted: boolean) => {
+    if (!isWatchlisted) {
+      setSavedAuctions((prev) => prev.filter((item) => item.id !== auctionId));
+    }
+  };
+
   if (!isLoaded || isLoading || !user) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
@@ -54,7 +68,7 @@ export default function WatchlistPage() {
         <div>
           <h1 className="text-xl font-black text-slate-900">My Watchlist</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Track current high bids on items you're monitoring.
+            Track current high bids on items you are monitoring.
           </p>
         </div>
         <span className="text-xs font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-100">
@@ -62,13 +76,13 @@ export default function WatchlistPage() {
         </span>
       </div>
 
-      {/* Empty State vs. Watchlist Grid */}
+      {/* Grid or Empty State */}
       {savedAuctions.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3 shadow-sm">
           <span className="text-4xl block">❤️</span>
           <h3 className="text-lg font-bold text-slate-800">Your watchlist is empty</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Browse the marketplace and click the heart icon on items to keep track of them here.
+            Browse the marketplace and click save on items to view them here.
           </p>
           <div className="pt-2">
             <Link
@@ -81,67 +95,14 @@ export default function WatchlistPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {savedAuctions.map((item) => {
-            const displayPrice =
-              typeof item.currentHighestBid === 'number'
-                ? item.currentHighestBid
-                : item.startingPrice || 0;
-
-            const coverImage =
-              item.images && item.images.length > 0
-                ? item.images[0]
-                : `https://picsum.photos/seed/${item.id}/600/600`;
-
-            return (
-              <div
-                key={item.id}
-                className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between"
-              >
-                <div>
-                  <div className="relative aspect-square w-full bg-slate-100">
-                    <Image
-                      src={coverImage}
-                      alt={item.title}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                    />
-                    <button
-                      onClick={() => toggleWatchlist(item.id)}
-                      title="Remove from Watchlist"
-                      className="absolute top-3 right-3 bg-white/90 p-2 rounded-full shadow-sm hover:bg-white transition text-xs hover:scale-105 active:scale-95"
-                    >
-                      ❤️
-                    </button>
-                  </div>
-
-                  <div className="p-4 space-y-1">
-                    <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">
-                      {item.category || 'Auction'}
-                    </span>
-                    <h3 className="font-bold text-slate-900 text-sm line-clamp-1">{item.title}</h3>
-                  </div>
-                </div>
-
-                <div className="p-4 pt-3 border-t border-slate-100 mt-2 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold">
-                      Current High Bid
-                    </span>
-                    <span className="text-lg font-black text-purple-950">
-                      ${displayPrice.toFixed(2)}
-                    </span>
-                  </div>
-                  <Link
-                    href={`/auction/${item.id}`}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg transition shadow-sm shadow-purple-600/20"
-                  >
-                    View Item
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
+          {savedAuctions.map((item) => (
+            <AuctionCard
+              key={item.id}
+              auction={item}
+              initialIsWatchlisted={true}
+              onWatchlistToggle={handleWatchlistToggle}
+            />
+          ))}
         </div>
       )}
     </div>

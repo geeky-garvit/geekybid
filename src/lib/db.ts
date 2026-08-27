@@ -4,14 +4,18 @@ import { neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 import bcrypt from 'bcryptjs';
 
-// Required for Neon WebSocket connections in serverless environments
-neonConfig.webSocketConstructor = ws;
+// Enable WebSocket connections for serverless & edge runtime support
+if (typeof window === 'undefined') {
+  neonConfig.webSocketConstructor = ws;
+}
 
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-const connectionString = process.env.DATABASE_URL!;
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL environment variable is missing.');
+}
 
-// Pass the connection config object directly to PrismaNeon
 const adapter = new PrismaNeon({ connectionString });
 
 export const prisma =
@@ -23,7 +27,9 @@ export const prisma =
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
-// ---------------- USER OPERATIONS ----------------
+/* ============================================================================
+ * USER OPERATIONS
+ * ============================================================================ */
 
 export interface UserDoc {
   id: string;
@@ -36,6 +42,7 @@ export interface UserDoc {
 }
 
 export async function findUserByEmail(email: string) {
+  if (!email) return null;
   const cleanEmail = email.toLowerCase().trim();
   const user = await prisma.user.findUnique({
     where: { email: cleanEmail },
@@ -49,7 +56,13 @@ export async function findUserByEmail(email: string) {
   };
 }
 
-export async function createUser(data: { name: string; email: string; passwordRaw: string }) {
+export async function createUser(data: {
+  name: string;
+  email: string;
+  passwordRaw: string;
+  avatar?: string;
+  role?: string;
+}) {
   const cleanEmail = data.email.toLowerCase().trim();
 
   const existingUser = await prisma.user.findUnique({
@@ -61,9 +74,9 @@ export async function createUser(data: { name: string; email: string; passwordRa
   }
 
   const passwordHash = await bcrypt.hash(data.passwordRaw, 10);
-  const avatarUrl = `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(
-    data.name.trim()
-  )}`;
+  const avatarUrl =
+    data.avatar ||
+    `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(data.name.trim())}`;
 
   const newUser = await prisma.user.create({
     data: {
@@ -71,7 +84,7 @@ export async function createUser(data: { name: string; email: string; passwordRa
       email: cleanEmail,
       password: passwordHash,
       avatar: avatarUrl,
-      role: 'collector',
+      role: data.role || 'collector',
     },
   });
 
@@ -85,7 +98,9 @@ export async function createUser(data: { name: string; email: string; passwordRa
   return safeUser;
 }
 
-// ---------------- AUCTION OPERATIONS ----------------
+/* ============================================================================
+ * AUCTION OPERATIONS
+ * ============================================================================ */
 
 export interface CreateAuctionInput {
   title: string;
@@ -129,15 +144,37 @@ export async function createAuction(input: CreateAuctionInput) {
 export async function getAuctionById(id: string) {
   return await prisma.auction.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      category: true,
+      startingBid: true,
+      currentPrice: true,
+      minIncrement: true,
+      status: true,
+      images: true,
+      attributes: true,
+      endTime: true,
+      createdAt: true,
+      updatedAt: true,
+      sellerId: true,
+      highestBidderId: true,
       seller: {
         select: { id: true, name: true, avatar: true },
       },
       bids: {
         orderBy: { timestamp: 'desc' },
-        include: {
+        select: {
+          id: true,
+          amount: true,
+          timestamp: true,
+          userId: true,
           user: { select: { id: true, name: true, avatar: true } },
         },
+      },
+      _count: {
+        select: { bids: true },
       },
     },
   });
@@ -150,9 +187,25 @@ export async function getActiveAuctions(category?: string) {
       ...(category ? { category } : {}),
     },
     orderBy: { createdAt: 'desc' },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      category: true,
+      startingBid: true,
+      currentPrice: true,
+      minIncrement: true,
+      status: true,
+      images: true,
+      attributes: true,
+      endTime: true,
+      createdAt: true,
+      sellerId: true,
       seller: {
         select: { id: true, name: true, avatar: true },
+      },
+      _count: {
+        select: { bids: true },
       },
     },
   });
@@ -166,27 +219,31 @@ export async function getAuctionResult(id: string) {
         in: ['ENDED', 'PAID'],
       },
     },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      category: true,
+      images: true,
+      currentPrice: true,
+      status: true,
+      endTime: true,
       bids: {
-        orderBy: {
-          amount: 'desc',
-        },
-        include: {
+        orderBy: { amount: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          amount: true,
+          timestamp: true,
           user: {
-            select: {
-              id: true,
-              name: true,
-              avatar: true,
-            },
+            select: { id: true, name: true, avatar: true },
           },
         },
       },
     },
   });
 
-  if (!auction) {
-    return null;
-  }
+  if (!auction) return null;
 
   const winningBid = auction.bids[0] ?? null;
 
@@ -204,12 +261,13 @@ export async function closeExpiredAuctions() {
         lte: new Date(),
       },
     },
-    include: {
+    select: {
+      id: true,
+      title: true,
       bids: {
-        orderBy: {
-          amount: 'desc',
-        },
+        orderBy: { amount: 'desc' },
         take: 1,
+        select: { userId: true, amount: true },
       },
     },
   });
@@ -218,35 +276,30 @@ export async function closeExpiredAuctions() {
     const winningBid = auction.bids[0];
 
     await prisma.auction.update({
-      where: {
-        id: auction.id,
-      },
+      where: { id: auction.id },
       data: {
         status: 'ENDED',
-
-        // If there was a bid, store the winning bidder.
-        // If there were no bids, keep it null.
         highestBidderId: winningBid?.userId ?? null,
-
-        // If there was a bid, make sure currentPrice
-        // reflects the winning bid.
-        ...(winningBid
-          ? {
-              currentPrice: winningBid.amount,
-            }
-          : {}),
+        ...(winningBid ? { currentPrice: winningBid.amount } : {}),
       },
     });
+
+    if (winningBid) {
+      await logUserActivity({
+        userId: winningBid.userId,
+        action: 'AUCTION_WON',
+        amount: winningBid.amount,
+        details: `Won auction "${auction.title}"`,
+      });
+    }
   }
 
   return expiredAuctions.length;
 }
 
 export async function getCompletedAuctions() {
-  // First mark expired ACTIVE auctions as ENDED
   await closeExpiredAuctions();
 
-  // Get ALL completed auctions, including auctions with no bids
   const auctions = await prisma.auction.findMany({
     where: {
       status: {
@@ -256,43 +309,36 @@ export async function getCompletedAuctions() {
     orderBy: {
       endTime: 'desc',
     },
-  });
-
-  // Get the users who won auctions
-  const winnerIds = auctions
-    .map((auction) => auction.highestBidderId)
-    .filter((id): id is string => id !== null);
-
-  const winners = await prisma.user.findMany({
-    where: {
-      id: {
-        in: winnerIds,
-      },
-    },
     select: {
       id: true,
-      name: true,
-      avatar: true,
+      title: true,
+      description: true,
+      category: true,
+      startingBid: true,
+      currentPrice: true,
+      status: true,
+      images: true,
+      endTime: true,
+      highestBidderId: true,
+      highestBidder: {
+        select: {
+          id: true,
+          name: true,
+          avatar: true,
+        },
+      },
     },
   });
 
-  // Create a quick lookup: userId → user
-  const winnerMap = new Map(
-    winners.map((winner) => [winner.id, winner])
-  );
-
-  // Add winner information to each auction
   return auctions.map((auction) => ({
     ...auction,
-
-    winner: auction.highestBidderId
-      ? winnerMap.get(auction.highestBidderId) ?? null
-      : null,
+    winner: auction.highestBidder,
   }));
 }
 
-
-// ---------------- ACTIVITY LOGGING OPERATIONS ----------------
+/* ============================================================================
+ * ACTIVITY LOGGING OPERATIONS
+ * ============================================================================ */
 
 export interface ActivityInput {
   userId: string;
@@ -325,7 +371,9 @@ export async function getUserActivityHistory(userId: string) {
   });
 }
 
-// ---------------- SELLER COMMUNITY CREATION ----------------
+/* ============================================================================
+ * SELLER COMMUNITY OPERATIONS
+ * ============================================================================ */
 
 export async function createSellerCommunity(sellerId: string, title: string) {
   try {

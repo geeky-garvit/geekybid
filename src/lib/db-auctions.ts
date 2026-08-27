@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma';
+import { prisma, logUserActivity } from '@/lib/db';
 
 /**
  * Checks for ACTIVE auctions past their endTime, finds the highest bidder,
@@ -32,15 +32,24 @@ export async function closeExpiredAuctionsAndFindWinners() {
         },
       });
 
-      // Optional: Log activity for the winning user
-      await prisma.activity.create({
-        data: {
-          action: 'AUCTION_WON',
-          details: `Won auction "${auction.title}"`,
-          amount: highestBid.amount,
+      // Log activity for the winning user
+      if (typeof logUserActivity === 'function') {
+        await logUserActivity({
           userId: highestBid.userId,
-        },
-      });
+          action: 'AUCTION_WON',
+          amount: highestBid.amount,
+          details: `Won auction "${auction.title}"`,
+        }).catch((err) => console.error('Failed to log win activity:', err));
+      } else {
+        await prisma.activity.create({
+          data: {
+            action: 'AUCTION_WON',
+            details: `Won auction "${auction.title}"`,
+            amount: highestBid.amount,
+            userId: highestBid.userId,
+          },
+        }).catch((err) => console.error('Failed to create win activity:', err));
+      }
     } else {
       // No bids received
       await prisma.auction.update({
@@ -49,6 +58,8 @@ export async function closeExpiredAuctionsAndFindWinners() {
       });
     }
   }
+
+  return expiredAuctions.length;
 }
 
 /** Get all auctions for the main marketplace */
@@ -58,7 +69,7 @@ export async function getAuctionsFromDB() {
   return await prisma.auction.findMany({
     include: {
       bids: { orderBy: { timestamp: 'desc' } },
-      seller: { select: { name: true, avatar: true } },
+      seller: { select: { id: true, name: true, avatar: true } },
     },
     orderBy: { createdAt: 'desc' },
   });

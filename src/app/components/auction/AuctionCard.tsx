@@ -1,26 +1,75 @@
-// src/components/auction/AuctionCard.tsx
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useAuth } from '@/context/AuthContext';
 import { Auction } from '@/lib/store';
 
 interface AuctionCardProps {
   auction: Auction;
+  initialIsWatchlisted?: boolean;
+  onWatchlistToggle?: (auctionId: string, isWatchlisted: boolean) => void;
 }
 
-export default function AuctionCard({ auction }: AuctionCardProps) {
+export default function AuctionCard({
+  auction,
+  initialIsWatchlisted = false,
+  onWatchlistToggle,
+}: AuctionCardProps) {
+  const { user } = useAuth();
+  const [isWatchlisted, setIsWatchlisted] = useState(initialIsWatchlisted);
+  const [loading, setLoading] = useState(false);
+
   const isLive = auction.status === 'live';
   const mainImage =
     auction.images && auction.images.length > 0
       ? auction.images[0]
       : 'https://picsum.photos/seed/fallback/600/600';
 
+  const handleWatchlistClick = async (e: React.MouseEvent) => {
+    // Prevent navigating to the auction detail page when clicking the heart button
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!user) {
+      alert('Please log in to add items to your watchlist.');
+      return;
+    }
+
+    const nextState = !isWatchlisted;
+    setIsWatchlisted(nextState);
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auctionId: auction.id,
+          userId: user.id,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        // Revert on database failure
+        setIsWatchlisted(!nextState);
+      } else if (onWatchlistToggle) {
+        onWatchlistToggle(auction.id, data.isWatchlisted);
+      }
+    } catch (err) {
+      console.error('Failed to toggle watchlist:', err);
+      setIsWatchlisted(!nextState);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Link
       href={`/auction/${encodeURIComponent(auction.id)}`}
-      className="group bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col h-full"
+      className="group bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col h-full relative"
     >
       {/* Image Container */}
       <div className="relative w-full h-48 bg-slate-100 overflow-hidden">
@@ -31,6 +80,8 @@ export default function AuctionCard({ auction }: AuctionCardProps) {
           className="object-cover group-hover:scale-105 transition duration-300"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
         />
+        
+        {/* Status Badge */}
         <div className="absolute top-3 left-3">
           <span
             className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm ${
@@ -40,8 +91,22 @@ export default function AuctionCard({ auction }: AuctionCardProps) {
             {isLive ? 'Live' : 'Ended'}
           </span>
         </div>
-        <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] font-bold text-slate-800 shadow-sm">
-          {auction.bidsCount} bids
+
+        {/* Watchlist Heart Button & Bids Count */}
+        <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+          <button
+            type="button"
+            onClick={handleWatchlistClick}
+            disabled={loading}
+            title={isWatchlisted ? 'Remove from Watchlist' : 'Save to Watchlist'}
+            className="bg-white/90 backdrop-blur-sm p-1.5 rounded-lg shadow-sm hover:bg-white transition hover:scale-105 active:scale-95 text-xs"
+          >
+            {isWatchlisted ? '❤️' : '🤍'}
+          </button>
+          
+          <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] font-bold text-slate-800 shadow-sm">
+            {auction.bidsCount} bids
+          </div>
         </div>
       </div>
 
@@ -64,7 +129,7 @@ export default function AuctionCard({ auction }: AuctionCardProps) {
           <div>
             <p className="text-[10px] uppercase font-semibold text-slate-400">Current Bid</p>
             <p className="text-sm font-black text-slate-900">
-              ${auction.currentHighestBid.toFixed(2)}
+              ${(auction.currentHighestBid || 0).toFixed(2)}
             </p>
           </div>
           <div className="text-right">
@@ -80,7 +145,7 @@ export default function AuctionCard({ auction }: AuctionCardProps) {
                 />
               </div>
               <span className="text-xs font-semibold text-slate-700 truncate max-w-[80px]">
-                {auction.sellerName}
+                {auction.sellerName || 'Seller'}
               </span>
             </div>
           </div>

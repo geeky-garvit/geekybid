@@ -4,8 +4,29 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
+interface Winner {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
+
+interface CompletedAuction {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  startingBid: number;
+  currentPrice: number;
+  status: string;
+  images: string[];
+  endTime: Date;
+  highestBidderId: string | null;
+  winner?: Winner | null;
+}
+
 export default async function WinnersPage() {
-  const auctions = await getCompletedAuctions();
+  const rawAuctions = await getCompletedAuctions();
+  const auctions: CompletedAuction[] = rawAuctions;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -31,7 +52,7 @@ export default async function WinnersPage() {
                 key={auction.id}
                 className="overflow-hidden rounded-xl bg-white shadow-sm"
               >
-                {auction.images[0] && (
+                {auction.images && auction.images[0] && (
                   <img
                     src={auction.images[0]}
                     alt={auction.title}

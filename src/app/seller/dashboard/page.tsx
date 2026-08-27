@@ -3,8 +3,36 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Auction, Bid, getAuctions, initializeStore, subscribeToStore } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
+
+interface BidHistory {
+  id: string;
+  amount: number;
+  bidderId: string;
+  time: string;
+  timestamp: string;
+  bidderName: string;
+  bidderAvatar: string;
+}
+
+interface Auction {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  startingBid: number;
+  startingPrice: number;
+  currentHighestBid: number;
+  minIncrement: number;
+  status: 'live' | 'ended' | 'paid';
+  images: string[];
+  endTime: string;
+  sellerId: string;
+  sellerName: string;
+  sellerAvatar: string;
+  bidsCount: number;
+  history: BidHistory[];
+}
 
 interface ActivityItem {
   id: string;
@@ -17,31 +45,42 @@ interface ActivityItem {
 }
 
 export default function SellerDashboardPage() {
-  const { user } = useAuth();
-  const [allAuctions, setAllAuctions] = useState<Auction[]>([]);
+  const { user, isLoaded } = useAuth();
+  const [sellerAuctions, setSellerAuctions] = useState<Auction[]>([]);
   const [activeTab, setActiveTab] = useState<'listings' | 'bids' | 'sold'>('listings');
   const [isLoading, setIsLoading] = useState(true);
 
-  const syncDashboardData = useCallback(async () => { await initializeStore(); setAllAuctions(getAuctions()); setIsLoading(false); }, []);
+  const fetchSellerAuctions = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      setIsLoading(true);
+      const res = await fetch(`/api/seller/auctions?sellerId=${user.id}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success) {
+        setSellerAuctions(data.auctions);
+      }
+    } catch (error) {
+      console.error('Failed to sync seller dashboard:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
-    let isMounted = true;
-    
-    const runSync = async () => {
-      if (isMounted) {
-        await syncDashboardData();
-      }
-    };
+    if (user?.id) {
+      fetchSellerAuctions();
+    }
+  }, [user?.id, fetchSellerAuctions]);
 
-    runSync();
-
-    const unsubscribe = subscribeToStore(() => { if (isMounted) setAllAuctions(getAuctions()); });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, [syncDashboardData]);
+  if (!isLoaded) {
+    return (
+      <div className="max-w-4xl mx-auto py-16 px-4 text-center space-y-4">
+        <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-slate-500 text-xs font-semibold">Verifying seller access...</p>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -52,7 +91,7 @@ export default function SellerDashboardPage() {
           Select a profile or sign in to access your seller central dashboard.
         </p>
         <Link
-          href="/login"
+          href={`/login?redirectTo=${encodeURIComponent('/seller/dashboard')}`}
           className="inline-block bg-purple-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl hover:bg-purple-700 transition"
         >
           Sign In
@@ -61,11 +100,8 @@ export default function SellerDashboardPage() {
     );
   }
 
-
-  const sellerAuctions = allAuctions.filter((a) => a.sellerId === user.id);
-
   const activeListings = sellerAuctions.filter((a) => a.status === 'live');
-  const soldListings = sellerAuctions.filter((a) => a.status === 'ended');
+  const soldListings = sellerAuctions.filter((a) => a.status === 'ended' || a.status === 'paid');
 
   const totalRevenue = soldListings.reduce((sum, item) => sum + item.currentHighestBid, 0);
   const totalBidsReceived = sellerAuctions.reduce((sum, item) => sum + item.bidsCount, 0);
@@ -77,7 +113,7 @@ export default function SellerDashboardPage() {
 
   const realRecentBids: ActivityItem[] = sellerAuctions
     .flatMap((auction) =>
-      (auction.history || []).map((bid: Bid) => {
+      (auction.history || []).map((bid) => {
         const parsedDate = new Date(bid.time);
         const isValidDate = !isNaN(parsedDate.getTime());
         return {
@@ -98,7 +134,7 @@ export default function SellerDashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-      {/* Top Header */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
           <div className="flex items-center gap-2">
@@ -107,7 +143,7 @@ export default function SellerDashboardPage() {
             </span>
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live Sync
+              Live DB Sync
             </span>
           </div>
           <h1 className="text-2xl font-black text-slate-900 mt-0.5">Seller Dashboard</h1>
@@ -131,7 +167,7 @@ export default function SellerDashboardPage() {
             ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full inline-block">
-            Realtime Total
+            Database Verified
           </span>
         </div>
 
@@ -205,7 +241,7 @@ export default function SellerDashboardPage() {
           {activeTab === 'listings' && (
             <div className="divide-y divide-slate-100">
               {isLoading ? (
-                <div className="py-8 text-center text-xs text-slate-400">Syncing active listings...</div>
+                <div className="py-8 text-center text-xs text-slate-400">Syncing database listings...</div>
               ) : activeListings.length === 0 ? (
                 <div className="py-8 text-center text-xs text-slate-400 font-medium">
                   No active listings found for user profile: <strong>{user.name}</strong>.
@@ -259,7 +295,7 @@ export default function SellerDashboardPage() {
             </div>
           )}
 
-          {/* TAB 2: Real-time Live Bids Activity */}
+          {/* TAB 2: Live Bids Activity */}
           {activeTab === 'bids' && (
             <div className="space-y-3">
               {realRecentBids.length === 0 ? (

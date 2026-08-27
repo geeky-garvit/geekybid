@@ -71,7 +71,7 @@ model Activity {
 }
 
 model Community {
-  id        String            @id
+  id        String            @id @default(uuid())
   title     String
   createdAt DateTime          @default(now())
 

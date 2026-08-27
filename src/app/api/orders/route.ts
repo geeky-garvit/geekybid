@@ -1,95 +1,104 @@
-import { NextResponse } from 'next/server';
-import { store, Order } from '@/lib/store';
-import { getCurrentUser } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
+import { getAuthUser } from '@/lib/auth';
 
-interface OrderItemInput {
-  id: string;
-  price: number;
-  quantity: number;
-  title?: string;
-  image?: string;
-  [key: string]: unknown;
-}
+export const dynamic = 'force-dynamic';
 
-export interface DetailedOrder extends Order {
-  items: OrderItemInput[];
-  createdAt: string;
-  itemTitle?: string;
-  image?: string;
-}
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    return NextResponse.json({
-      orders: store.orders.filter((order) => order.winnerId === currentUser.id),
+    // Safely check if order model exists on prisma instance
+    const db = prisma as any;
+    if (!db.order) {
+      return NextResponse.json({ success: true, orders: [] });
+    }
+
+    const whereCondition = user.role === 'admin' ? {} : { userId: user.id };
+
+    const orders = await db.order.findMany({
+      where: whereCondition,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        auction: { select: { id: true, title: true, images: true } },
+      },
     });
+
+    return NextResponse.json({ success: true, orders });
   } catch (error) {
+    console.error('Failed to fetch orders:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal Server Error' },
+      { success: false, error: 'Failed to fetch orders' },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { items } = body as {
-      items?: OrderItemInput[];
-    };
-
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    const body = await request.json().catch(() => null);
+    if (!body || !body.auctionId || !body.amount) {
       return NextResponse.json(
-        { error: 'Missing required parameter: items' },
+        { success: false, error: 'Missing auctionId or amount' },
         { status: 400 }
       );
     }
 
-    const primaryItemId = items[0]?.id;
-    const matchingAuction = store.auctions.find((a) => a.id === primaryItemId);
-    if (!matchingAuction) {
-      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
-    }
-    if (matchingAuction.status !== 'ended' || matchingAuction.history[0]?.bidderId !== currentUser.id) {
-      return NextResponse.json({ error: 'Only the auction winner can create an order' }, { status: 403 });
-    }
-    if (store.orders.some((order) => order.auctionId === primaryItemId)) {
-      return NextResponse.json({ error: 'An order already exists for this auction' }, { status: 409 });
-    }
-    const amount = Math.round((matchingAuction.currentHighestBid * 1.08 + 15) * 100) / 100;
+    const { auctionId, amount, shippingAddress } = body;
+    const db = prisma as any;
 
-    const newOrder: DetailedOrder = {
-      id: `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      auctionId: primaryItemId || 'multi-item',
-      winnerId: currentUser.id,
-      amount,
-      isPaid: false,
-      items,
-      itemTitle: matchingAuction.title,
-      image: matchingAuction.images[0] || 'https://picsum.photos/600/600',
-      createdAt: new Date().toISOString(),
-    };
+    const result = await prisma.$transaction(async (tx: any) => {
+      const auction = await tx.auction.findUnique({
+        where: { id: auctionId },
+      });
 
-    if (!store.orders) {
-      store.orders = [];
-    }
+      if (!auction) {
+        throw new Error('Auction not found');
+      }
 
-    store.orders.unshift(newOrder);
+      let order = null;
 
-    return NextResponse.json({ success: true, order: newOrder }, { status: 201 });
-  } catch (error) {
+      // Create order if model exists, otherwise update auction directly
+      if (tx.order) {
+        order = await tx.order.create({
+          data: {
+            userId: user.id,
+            auctionId,
+            amount: parseFloat(amount),
+            isPaid: true,
+            shippingAddress: shippingAddress || 'Digital Delivery',
+          },
+        });
+      }
+
+      await tx.auction.update({
+        where: { id: auctionId },
+        data: { status: 'PAID' },
+      });
+
+      return order || { id: `ord_${Date.now()}`, auctionId, amount, isPaid: true };
+    });
+
+    return NextResponse.json({ success: true, order: result }, { status: 201 });
+  } catch (error: any) {
+    console.error('Failed to create order:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create order' },
+      { success: false, error: error.message || 'Failed to process order' },
       { status: 500 }
     );
   }

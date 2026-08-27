@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
+import { getAuthUser } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,16 +16,39 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.max(1, parseInt(searchParams.get('limit') || '10', 10));
 
+    // Auto-close any expired auctions before reading
+    await prisma.auction.updateMany({
+      where: {
+        status: 'ACTIVE',
+        endTime: { lte: new Date() },
+      },
+      data: {
+        status: 'ENDED',
+      },
+    });
+
     const where: any = {};
 
-    if (status !== 'all') {
+    // Map status seamlessly (e.g., handles 'live', 'ACTIVE', 'ended')
+    const normalizedStatus = status.toLowerCase();
+    if (normalizedStatus === 'live' || normalizedStatus === 'active') {
+      where.status = { in: ['ACTIVE', 'active', 'live', 'LIVE'] };
+      where.endTime = { gt: new Date() };
+    } else if (normalizedStatus === 'ended') {
+      where.OR = [
+        { status: { in: ['ENDED', 'ended', 'CLOSED', 'closed'] } },
+        { endTime: { lte: new Date() } },
+      ];
+    } else if (normalizedStatus !== 'all') {
       where.status = status;
     }
 
+    // Category filter
     if (category && category !== 'all') {
       where.category = { equals: category, mode: 'insensitive' };
     }
 
+    // Case-insensitive search
     if (search) {
       where.OR = [
         { title: { contains: search, mode: 'insensitive' } },
@@ -29,22 +56,23 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    let orderBy: any = {};
+    // Sorting
+    let orderBy: any = { endTime: 'asc' };
     switch (sortBy) {
       case 'endingSoon':
         orderBy = { endTime: 'asc' };
         break;
       case 'priceLow':
+      case 'priceAsc':
         orderBy = { currentPrice: 'asc' };
         break;
       case 'priceHigh':
+      case 'priceDesc':
         orderBy = { currentPrice: 'desc' };
         break;
       case 'newest':
         orderBy = { createdAt: 'desc' };
         break;
-      default:
-        orderBy = { endTime: 'asc' };
     }
 
     const skip = (page - 1) * limit;
@@ -56,7 +84,7 @@ export async function GET(request: NextRequest) {
         skip,
         take: limit,
         include: {
-          seller: { select: { id: true, name: true, avatar: true } },
+          seller: { select: { id: true, name: true, avatar: true, email: true } },
           _count: { select: { bids: true } },
         },
       }),
@@ -76,7 +104,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Failed to fetch auctions:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch auctions' },
+      { success: false, error: 'Failed to fetch auctions from database' },
       { status: 500 }
     );
   }
@@ -84,7 +112,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const authUser = await getAuthUser();
+    
+    const body = await request.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid payload.' },
+        { status: 400 }
+      );
+    }
+
     const {
       title,
       category,
@@ -94,50 +131,66 @@ export async function POST(request: NextRequest) {
       minIncrement,
       endTime,
       images,
-      sellerId,
+      sellerId: bodySellerId,
     } = body;
 
-    const price = parseFloat(startingPrice || startingBid);
+    const sellerId = authUser?.id || bodySellerId;
 
-    if (!title || isNaN(price) || !endTime || !sellerId) {
+    if (!sellerId) {
       return NextResponse.json(
-        { success: false, error: 'Missing or invalid required fields' },
+        { success: false, error: 'Unauthorized. Seller identity missing.' },
+        { status: 401 }
+      );
+    }
+
+    const price = parseFloat(startingPrice || startingBid);
+    const parsedEndTime = new Date(endTime);
+
+    if (!title || isNaN(price) || price <= 0 || isNaN(parsedEndTime.getTime())) {
+      return NextResponse.json(
+        { success: false, error: 'Missing or invalid required fields (title, positive price, valid end time).' },
         { status: 400 }
       );
     }
 
-    // Ensure the seller exists in PostgreSQL first
-    const sellerExists = await prisma.user.findUnique({
+    // Verify user exists in DB
+    let seller = await prisma.user.findUnique({
       where: { id: sellerId },
     });
 
-    // Fallback seller creation if sellerId is not yet registered in DB
-    if (!sellerExists) {
-      await prisma.user.create({
+    if (!seller) {
+      seller = await prisma.user.create({
         data: {
           id: sellerId,
-          name: 'Seller',
-          email: `${sellerId}@example.com`,
-          password: '$2a$10$abcdefghijklmnopqrstuu', // Default hashed password
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
+          name: authUser?.name || 'Seller',
+          email: authUser?.email || `${sellerId}@example.com`,
+          password: '$2a$10$placeholderhashplaceholderhash',
+          avatar: authUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
         },
       });
     }
 
     const auction = await prisma.auction.create({
       data: {
-        title,
+        title: title.trim(),
         category: category || 'general',
-        description: description || '',
+        description: description?.trim() || '',
         startingBid: price,
         currentPrice: price,
         minIncrement: parseFloat(minIncrement) || 5,
-        endTime: new Date(endTime),
-        images: images || [],
+        endTime: parsedEndTime,
+        images: Array.isArray(images) ? images : [],
         status: 'ACTIVE',
-        sellerId,
+        sellerId: seller.id,
+      },
+      include: {
+        seller: { select: { id: true, name: true, avatar: true } },
       },
     });
+
+    // CRITICAL: Purge cache so newly added items show immediately on all auction feeds
+    revalidatePath('/auctions');
+    revalidatePath('/seller/dashboard');
 
     return NextResponse.json({ success: true, auction }, { status: 201 });
   } catch (error) {

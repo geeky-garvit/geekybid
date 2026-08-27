@@ -4,6 +4,7 @@ import InfiniteAuctionGrid from '@/app/components/auction/InfiniteAuctionGrid';
 import AuctionHorizontalFilter from './components/AuctionSidebarFilter';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
 interface SearchParams {
@@ -14,6 +15,7 @@ interface SearchParams {
   endingWithin?: string;
   sortBy?: string;
   search?: string;
+  t?: string; // Cache buster timestamp parameter
 }
 
 export default async function AuctionsPage({
@@ -30,31 +32,39 @@ export default async function AuctionsPage({
   const endingWithin = queryParams.endingWithin ? parseInt(queryParams.endingWithin, 10) : undefined;
   const sortBy = queryParams.sortBy || 'endingSoon';
   const search = queryParams.search || '';
+  const timestamp = queryParams.t || Date.now().toString();
 
   const whereFilter: any = {};
+  const now = new Date();
 
-  // Category Filter
+  // 1. Category Filter
   if (category !== 'all') {
     whereFilter.category = { equals: category, mode: 'insensitive' };
   }
 
-  // Status Filter - match ACTIVE / live seamlessly
+  // 2. Status & Expiration Filter
   if (status === 'live' || status === 'ACTIVE') {
     whereFilter.status = { in: ['ACTIVE', 'active', 'live', 'LIVE'] };
+    whereFilter.endTime = { gt: now };
+  } else if (status === 'ended') {
+    whereFilter.OR = [
+      { status: { in: ['ENDED', 'ended', 'CLOSED', 'closed'] } },
+      { endTime: { lte: now } },
+    ];
   } else if (status !== 'all') {
-    whereFilter.status = { equals: status, mode: 'insensitive' };
+    whereFilter.status = { equals: status };
   }
 
-  // Search Query
+  // 3. Search Query
   if (search.trim()) {
     whereFilter.OR = [
-      { title: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
+      { title: { contains: search.trim(), mode: 'insensitive' } },
+      { description: { contains: search.trim(), mode: 'insensitive' } },
     ];
   }
 
-  // Price Filter
-  if (minPrice !== undefined || maxPrice !== undefined) {
+  // 4. Price Range Filter
+  if ((minPrice !== undefined && !isNaN(minPrice)) || (maxPrice !== undefined && !isNaN(maxPrice))) {
     whereFilter.currentPrice = {};
     if (minPrice !== undefined && !isNaN(minPrice)) {
       whereFilter.currentPrice.gte = minPrice;
@@ -64,33 +74,46 @@ export default async function AuctionsPage({
     }
   }
 
-  // Time Filter
+  // 5. Time Limit Filter
   if (endingWithin !== undefined && !isNaN(endingWithin)) {
     const cutoffDate = new Date(Date.now() + endingWithin * 3600 * 1000);
-    whereFilter.endTime = { lte: cutoffDate };
+    whereFilter.endTime = {
+      ...(whereFilter.endTime || {}),
+      lte: cutoffDate,
+      gt: now,
+    };
   }
 
-  // Sorting
+  // 6. Sorting Order
   let orderBy: any = { endTime: 'asc' };
   if (sortBy === 'priceAsc') orderBy = { currentPrice: 'asc' };
   if (sortBy === 'priceDesc') orderBy = { currentPrice: 'desc' };
   if (sortBy === 'newest') orderBy = { createdAt: 'desc' };
 
-  const dbAuctions = await prisma.auction.findMany({
-    where: whereFilter,
-    orderBy,
-    include: {
-      seller: { select: { id: true, name: true, avatar: true } },
-      bids: {
-        orderBy: { timestamp: 'desc' },
-        include: { user: { select: { name: true, avatar: true } } },
+  // Fetch count and paginated items in parallel
+  const limit = 8;
+  const [totalCount, dbAuctions] = await Promise.all([
+    prisma.auction.count({ where: whereFilter }),
+    prisma.auction.findMany({
+      where: whereFilter,
+      orderBy,
+      take: limit + 1,
+      include: {
+        seller: { select: { id: true, name: true, avatar: true } },
+        bids: {
+          orderBy: { timestamp: 'desc' },
+          include: { user: { select: { name: true, avatar: true } } },
+        },
+        _count: { select: { bids: true } },
       },
-      _count: { select: { bids: true } },
-    },
-  });
+    }),
+  ]);
 
-  // Transform and normalize status
-  let items = dbAuctions.map((a) => {
+  const hasMore = dbAuctions.length > limit;
+  const rawItems = hasMore ? dbAuctions.slice(0, limit) : dbAuctions;
+  const initialNextCursor = hasMore ? rawItems[rawItems.length - 1].id : null;
+
+  const items = rawItems.map((a) => {
     let mappedStatus: 'live' | 'ended' | 'paid' = 'live';
     const normalized = a.status.toLowerCase();
 
@@ -98,7 +121,7 @@ export default async function AuctionsPage({
       mappedStatus = 'ended';
     } else if (normalized === 'paid' || normalized === 'completed') {
       mappedStatus = 'paid';
-    } else if (new Date(a.endTime) <= new Date()) {
+    } else if (new Date(a.endTime) <= now) {
       mappedStatus = 'ended';
     }
 
@@ -133,18 +156,6 @@ export default async function AuctionsPage({
     };
   });
 
-  // Filter out ended items if user explicitly selected live items
-  if (status === 'live') {
-    items = items.filter((item) => item.status === 'live');
-  }
-
-  const limit = 8;
-  const initialSlice = items.slice(0, limit);
-  const initialNextCursor =
-    initialSlice.length === limit && items.length > limit
-      ? initialSlice[initialSlice.length - 1].id
-      : null;
-
   return (
     <div className="min-h-screen bg-slate-50">
       <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
@@ -162,13 +173,15 @@ export default async function AuctionsPage({
           <div className="flex justify-between items-center">
             <h1 className="text-xl font-black text-slate-900">
               Auction Marketplace{' '}
-              <span className="text-xs font-normal text-slate-500">({items.length} items)</span>
+              <span className="text-xs font-normal text-slate-500">
+                ({totalCount} {totalCount === 1 ? 'item' : 'items'})
+              </span>
             </h1>
           </div>
 
           <InfiniteAuctionGrid
-            key={`grid-${items.length}-${category}-${status}-${search}-${sortBy}-${minPrice}-${maxPrice}`}
-            initialItems={initialSlice}
+            key={`grid-${category}-${status}-${search}-${sortBy}-${minPrice}-${maxPrice}-${timestamp}-${items.length}`}
+            initialItems={items}
             initialNextCursor={initialNextCursor}
           />
         </section>

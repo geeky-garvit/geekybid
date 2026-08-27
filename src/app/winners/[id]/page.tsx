@@ -22,7 +22,6 @@ export default async function WinnerResultPage({
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-4xl px-4 py-10">
-
         <Link
           href="/winners"
           className="text-sm font-semibold text-slate-500 hover:text-slate-900"
@@ -31,8 +30,7 @@ export default async function WinnerResultPage({
         </Link>
 
         <div className="mt-6 overflow-hidden rounded-2xl bg-white shadow-sm">
-
-          {auction.images[0] && (
+          {auction.images && auction.images[0] && (
             <img
               src={auction.images[0]}
               alt={auction.title}
@@ -41,7 +39,6 @@ export default async function WinnerResultPage({
           )}
 
           <div className="p-8">
-
             <p className="text-sm font-medium text-slate-500">
               {auction.category}
             </p>
@@ -55,7 +52,6 @@ export default async function WinnerResultPage({
             </p>
 
             <div className="mt-8 border-t pt-6">
-
               {winningBid ? (
                 <>
                   <p className="text-sm font-medium text-slate-500">
@@ -103,7 +99,6 @@ export default async function WinnerResultPage({
                   </p>
                 </div>
               )}
-
             </div>
 
             <div className="mt-6 border-t pt-5">
@@ -112,7 +107,6 @@ export default async function WinnerResultPage({
                 {new Date(auction.endTime).toLocaleDateString()}
               </p>
             </div>
-
           </div>
         </div>
       </div>

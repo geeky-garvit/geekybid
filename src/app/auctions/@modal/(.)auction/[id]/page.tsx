@@ -1,7 +1,7 @@
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { getAuctionById } from '@/lib/store';
+import { prisma } from '@/lib/db';
 import Modal from '@/app/components/ui/Modal';
 import BidForm from '@/app/components/auction/BidForm';
 import SellerBadge from './components/SellerBadge';
@@ -14,9 +14,21 @@ export default async function QuickViewAuctionModal({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const auction = getAuctionById(id);
 
-  if (!auction) {
+  // Fetch auction with current high bids and seller profile directly from DB
+  const dbAuction = await prisma.auction.findUnique({
+    where: { id },
+    include: {
+      seller: { select: { id: true, name: true, avatar: true } },
+      bids: {
+        orderBy: { timestamp: 'desc' },
+        include: { user: { select: { name: true, avatar: true } } },
+      },
+      _count: { select: { bids: true } },
+    },
+  });
+
+  if (!dbAuction) {
     return (
       <Modal>
         <div className="p-8 text-center space-y-2">
@@ -29,6 +41,35 @@ export default async function QuickViewAuctionModal({
     );
   }
 
+  // Normalize Prisma object to match client component structures
+  const history = dbAuction.bids.map((b) => {
+    const isoTimeString = b.timestamp.toISOString();
+    return {
+      id: b.id,
+      amount: b.amount,
+      bidderId: b.userId,
+      time: isoTimeString,
+      timestamp: isoTimeString,
+      bidderName: b.user?.name || 'Anonymous',
+      bidderAvatar: b.user?.avatar || '',
+    };
+  });
+
+  const auction = {
+    id: dbAuction.id,
+    title: dbAuction.title,
+    description: dbAuction.description,
+    category: dbAuction.category,
+    startingBid: dbAuction.startingBid,
+    currentHighestBid: dbAuction.currentPrice,
+    minIncrement: dbAuction.minIncrement,
+    images: dbAuction.images,
+    sellerName: dbAuction.seller?.name || 'Seller',
+    sellerAvatar: dbAuction.seller?.avatar || '',
+    bidsCount: dbAuction._count.bids,
+    history,
+  };
+
   return (
     <Modal>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-start pt-2">
@@ -36,7 +77,7 @@ export default async function QuickViewAuctionModal({
         <div className="space-y-4">
           <div className="relative aspect-square w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-100">
             <Image
-              src={auction.images[0]}
+              src={auction.images[0] || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600'}
               alt={auction.title}
               fill
               className="object-cover"
@@ -73,7 +114,7 @@ export default async function QuickViewAuctionModal({
           <div className="text-center pt-2">
             <Link
               href={`/auction/${auction.id}`}
-              className="text-xs font-bold text-purple-600 hover:underline"
+              className="text-xs font-bold text-purple-600 hover:underline inline-block py-1"
             >
               Open Full Details Page →
             </Link>

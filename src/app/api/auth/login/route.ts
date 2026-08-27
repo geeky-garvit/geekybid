@@ -18,11 +18,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🔑 Fix: Normalize email
+    // Normalize email
     const email = body.email.toLowerCase().trim();
     const { password } = body;
 
-    // 1. Fetch user from MongoDB
+    // 1. Fetch user from PostgreSQL via Prisma
     const userDoc = await findUserByEmail(email);
     if (!userDoc) {
       return NextResponse.json(
@@ -40,16 +40,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Log login activity in MongoDB
+    // 3. Log login activity in PostgreSQL
     await logUserActivity({
       userId: userDoc.id,
       action: 'USER_LOGGED_IN',
       details: `Logged in from IP: ${request.headers.get('x-forwarded-for') || 'localhost'}`,
     });
 
-    // 4. Issue JWT Token (pass normalized email)
+    // 4. Issue JWT Token (include name, email, avatar, role for getAuthUser compatibility)
     const token = jwt.sign(
-      { userId: userDoc.id, email: userDoc.email.toLowerCase(), role: userDoc.role },
+      {
+        userId: userDoc.id,
+        email: userDoc.email.toLowerCase(),
+        name: userDoc.name,
+        avatar: userDoc.avatar,
+        role: userDoc.role,
+      },
       JWT_SECRET,
       { expiresIn: '7d' }
     );

@@ -1,17 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getAuctions, placeBid, Bid } from '@/lib/store';
-import { syncAndSimulateAuctions } from '@/lib/auction-engine';
+import { prisma } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
 export interface PlaceBidResponse {
   success: boolean;
   message: string;
   highestBid?: number;
-  bidsCount?: number;
-  history?: Bid[];
-  newEndTime?: string;
+  newEndTime?: Date;
   timeExtended?: boolean;
 }
 
@@ -20,10 +17,7 @@ export async function placeBidAction(
   amount: number
 ): Promise<PlaceBidResponse> {
   try {
-    // 1. Keep store states updated and finalize naturally expired items first
-    await syncAndSimulateAuctions();
-
-    // 2. Validate user session
+    // 1. Authenticate user
     const currentUser = await getCurrentUser();
     if (!currentUser) {
       return {
@@ -32,36 +26,79 @@ export async function placeBidAction(
       };
     }
 
-    // 3. Locate target auction and verify strict server-side end time
-    const auction = getAuctions().find((item) => item.id === auctionId);
-    if (!auction) {
-      return {
-        success: false,
-        message: 'Auction listing not found.',
-      };
-    }
+    // 2. Perform Atomic Transaction with Pessimistic Locking
+    const result = await prisma.$transaction(async (tx) => {
+      // Lock auction row (SELECT ... FOR UPDATE) to eliminate concurrent race conditions
+      const auctions: any[] = await tx.$queryRaw`
+        SELECT * FROM "Auction" WHERE id = ${auctionId} FOR UPDATE
+      `;
+      const auction = auctions[0];
 
-    const currentServerTime = Date.now();
-    const auctionEndTime = new Date(auction.endTime).getTime();
+      if (!auction) {
+        throw new Error('Auction listing not found.');
+      }
 
-    if (currentServerTime >= auctionEndTime || auction.status === 'ended') {
-      return {
-        success: false,
-        message: 'Bidding closed! This auction has ended.',
-      };
-    }
+      // Prevent seller from bidding on their own item
+      if (auction.sellerId === currentUser.id) {
+        throw new Error('You cannot place a bid on your own auction.');
+      }
 
-    // 4. placeBid owns the anti-sniping rule, so every caller gets identical behavior.
-    const originalEndTime = auction.endTime;
-    const updatedAuction = placeBid(
-      auctionId,
-      amount,
-      currentUser.id,
-      currentUser.name
-    );
-    const timeExtended = updatedAuction.endTime !== originalEndTime;
+      const now = new Date();
+      const endTime = new Date(auction.endTime);
+      const statusUpper = auction.status ? auction.status.toUpperCase() : '';
 
-    // 5. Purge Next.js static cache so all users immediately see updated price/time
+      if (now >= endTime || (statusUpper !== 'ACTIVE' && statusUpper !== 'LIVE')) {
+        throw new Error('Bidding closed! This auction has ended.');
+      }
+
+      const minBidRequired = Number(auction.currentPrice) + Number(auction.minIncrement);
+      if (amount < minBidRequired) {
+        throw new Error(`Bid must be at least $${minBidRequired.toFixed(2)}.`);
+      }
+
+      // Anti-sniping rule: extend by 2 minutes if bid placed within last 2 minutes
+      let newEndTime = new Date(endTime);
+      let timeExtended = false;
+      const timeRemainingMs = endTime.getTime() - now.getTime();
+
+      if (timeRemainingMs < 2 * 60 * 1000) {
+        newEndTime = new Date(now.getTime() + 2 * 60 * 1000);
+        timeExtended = true;
+      }
+
+      // A. Create Bid Record
+      await tx.bid.create({
+        data: {
+          amount,
+          auctionId,
+          userId: currentUser.id,
+        },
+      });
+
+      // B. Update Auction Record
+      const updatedAuction = await tx.auction.update({
+        where: { id: auctionId },
+        data: {
+          currentPrice: amount,
+          highestBidderId: currentUser.id,
+          endTime: newEndTime,
+        },
+      });
+
+      // C. Record User Activity Log
+      await tx.activity.create({
+        data: {
+          userId: currentUser.id,
+          action: 'PLACED_BID',
+          details: `Placed bid of $${amount} on "${auction.title}"`,
+          amount,
+        },
+      });
+
+      return { updatedAuction, timeExtended };
+    });
+
+    // 3. Purge Next.js static cache
     revalidatePath(`/auction/${auctionId}`);
     revalidatePath('/auctions');
     revalidatePath('/seller/dashboard');
@@ -69,14 +106,12 @@ export async function placeBidAction(
 
     return {
       success: true,
-      message: timeExtended
+      message: result.timeExtended
         ? `Bid accepted! ⚡ Anti-sniping protection activated: Time extended by 2 minutes.`
-        : `Bid placed successfully. New highest bid: $${updatedAuction.currentHighestBid.toFixed(2)}`,
-      highestBid: updatedAuction.currentHighestBid,
-      bidsCount: updatedAuction.bidsCount,
-      history: updatedAuction.history,
-      newEndTime: updatedAuction.endTime,
-      timeExtended,
+        : `Bid placed successfully. New highest bid: $${Number(result.updatedAuction.currentPrice).toFixed(2)}`,
+      highestBid: Number(result.updatedAuction.currentPrice),
+      newEndTime: result.updatedAuction.endTime,
+      timeExtended: result.timeExtended,
     };
   } catch (error) {
     return {

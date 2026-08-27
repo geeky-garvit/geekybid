@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
+import { placeBidAction } from '@/app/actions/auction';
 
 export interface Bid {
   id: string;
@@ -18,7 +19,7 @@ interface Props {
   minIncrement: number;
   initialBidsCount: number;
   initialHistory: Bid[];
-  endTime?: string | Date; // Added endTime to validate expiration
+  endTime?: string | Date;
 }
 
 export default function BidForm({
@@ -38,31 +39,50 @@ export default function BidForm({
   const [history, setHistory] = useState<Bid[]>(initialHistory);
 
   const minAllowed = highestBid + minIncrement;
-  const [amount, setAmount] = useState(minAllowed);
+  const [amount, setAmount] = useState<number>(minAllowed);
+  const [isAuctionExpired, setIsAuctionExpired] = useState(false);
 
-  // Check if auction is active and has valid time remaining
-  const isAuctionExpired = endTime ? new Date(endTime).getTime() <= Date.now() : false;
+  useEffect(() => {
+    setHighestBid(initialHighestBid);
+    setBidsCount(initialBidsCount);
+    setHistory(initialHistory);
+  }, [initialHighestBid, initialBidsCount, initialHistory]);
+
+  useEffect(() => {
+    const nextMin = highestBid + minIncrement;
+    setAmount(Number(nextMin.toFixed(2)));
+  }, [highestBid, minIncrement]);
+
+  useEffect(() => {
+    if (!endTime) return;
+    const checkExpiry = () => {
+      setIsAuctionExpired(new Date(endTime).getTime() <= Date.now());
+    };
+    checkExpiry();
+    const interval = setInterval(checkExpiry, 1000);
+    return () => clearInterval(interval);
+  }, [endTime]);
 
   const maskName = (name: string) => {
     if (!name || name.length <= 2) return 'a***r';
     return `${name[0]}***${name[name.length - 1]}`;
   };
 
+  const handleQuickBid = (increment: number) => {
+    const nextAmount = minAllowed + increment;
+    setAmount(Number(nextAmount.toFixed(2)));
+  };
+
   const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 0. Check auction expiration
     if (isAuctionExpired) {
-      toast.error('Auction Has Ended!', {
-        description: 'You can no longer place bids on this item.',
-      });
+      toast.error('Auction Has Ended!');
       return;
     }
 
-    // 1. Unauthenticated users get Sonner toast & option to sign in
     if (!user) {
       toast.error('You must be signed in to place a bid!', {
-        description: 'Please sign in to your account to participate in this auction.',
         action: {
           label: 'Sign In',
           onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
@@ -71,59 +91,41 @@ export default function BidForm({
       return;
     }
 
-    // 2. Validate bid amount
     if (amount < minAllowed) {
-      toast.error(`Bid amount too low!`, {
-        description: `Your bid must be at least $${minAllowed.toFixed(2)}.`,
-      });
+      toast.error(`Bid must be at least $${minAllowed.toFixed(2)}.`);
       return;
     }
 
     setIsPending(true);
 
     try {
-      const res = await fetch('/api/bids', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ auctionId, amount }),
-      });
+      const res = await placeBidAction(auctionId, amount);
 
-      const data = await res.json().catch(() => ({
-        success: false,
-        message: 'Unexpected server error response.',
-      }));
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          toast.error('Session expired. Please log in again.', {
-            action: {
-              label: 'Sign In',
-              onClick: () => router.push(`/login?redirectTo=/auctions/${auctionId}`),
-            },
-          });
-          return;
+      if (!res.success) {
+        toast.error(res.message);
+        if (res.message.includes('Authentication required') || res.message.includes('sign in')) {
+          router.push(`/login?redirectTo=/auctions/${auctionId}`);
         }
-        throw new Error(data.message || `Server error (${res.status})`);
+        return;
       }
 
-      // Update state and show success toast
-      const newBid: Bid = {
+      const newHighest = res.highestBid ?? amount;
+      setHighestBid(newHighest);
+      setBidsCount((prev) => prev + 1);
+
+      const newBidRecord: Bid = {
         id: Date.now().toString(),
         bidderName: user.name || 'You',
-        amount,
+        amount: newHighest,
         time: new Date().toISOString(),
       };
 
-      setHighestBid(amount);
-      setBidsCount((prev) => prev + 1);
-      setHistory((prev) => [newBid, ...prev]);
-      setAmount(amount + minIncrement);
-
-      toast.success(data.message || 'Bid placed successfully!');
+      setHistory((prev) => [newBidRecord, ...prev]);
+      toast.success(res.message);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to place bid.');
+      console.error('Bid Submission Error:', error);
+      toast.error('An unexpected error occurred while placing your bid.');
     } finally {
       setIsPending(false);
     }
@@ -131,7 +133,6 @@ export default function BidForm({
 
   return (
     <div className="space-y-6">
-      {/* Bid Input Box */}
       <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4">
         <div className="flex justify-between items-center border-b border-slate-100 pb-4">
           <div>
@@ -166,6 +167,20 @@ export default function BidForm({
             />
           </div>
 
+          <div className="flex gap-2">
+            {[5, 10, 25].map((inc) => (
+              <button
+                key={inc}
+                type="button"
+                disabled={isPending || isAuctionExpired}
+                onClick={() => handleQuickBid(inc)}
+                className="flex-1 py-1.5 px-3 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                +${inc}
+              </button>
+            ))}
+          </div>
+
           <button
             type="submit"
             disabled={isPending || isAuctionExpired}
@@ -188,7 +203,6 @@ export default function BidForm({
         </form>
       </div>
 
-      {/* Masked Bid History */}
       <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl">
         <h3 className="text-sm font-bold text-slate-800 mb-3">
           Bid History ({history.length})

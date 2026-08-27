@@ -19,6 +19,7 @@ interface AuthContextType {
   toggleWatchlist: (auctionId: string) => void;
   isWatchlisted: (auctionId: string) => boolean;
   isLoaded: boolean;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -71,7 +72,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser();
   }, [refreshUser]);
 
-  // 🔑 FIX: Set isLoaded to true when user logs in so protected pages don't kick them out
   const loginUser = (newUser: User) => {
     setUser(newUser);
     loadUserWatchlist(newUser.id);
@@ -115,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         toggleWatchlist,
         isWatchlisted,
         isLoaded,
+        isLoading: !isLoaded,
       }}
     >
       {children}
