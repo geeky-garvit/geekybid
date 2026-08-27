@@ -1,16 +1,16 @@
-// src/lib/validation.ts
-import { z } from 'zod';
+import { z } from "zod";
 
 export const loginSchema = z.object({
-  email: z
-    .string({ message: 'Email is required' })
-    .min(1, 'Email is required')
-    .email('Please enter a valid email address')
-    .transform((val) => val.toLowerCase().trim()),
-  password: z
-    .string({ message: 'Password is required' })
-    .min(1, 'Password is required')
-    .min(6, 'Password must be at least 6 characters long'),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+// Add this export
+export const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 export type LoginFormData = z.infer<typeof loginSchema>;
+export type RegisterFormData = z.infer<typeof registerSchema>;
