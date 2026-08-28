@@ -1,9 +1,20 @@
 import './globals.css';
+import { Geist, Geist_Mono } from 'next/font/google';
 import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import Navbar from '@/app/components/Navbar'; 
 import { Toaster } from 'sonner';
+
+const geistSans = Geist({
+  variable: '--font-geist-sans',
+  subsets: ['latin'],
+});
+
+const geistMono = Geist_Mono({
+  variable: '--font-geist-mono',
+  subsets: ['latin'],
+});
 
 export const metadata = {
   title: 'Auction Marketplace',
@@ -18,7 +29,7 @@ export default function RootLayout({
   modal?: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className={`h-full ${geistSans.variable} ${geistMono.variable}`}>
       <body 
         suppressHydrationWarning 
         className="bg-slate-50 text-slate-900 font-sans antialiased min-h-full flex flex-col"
