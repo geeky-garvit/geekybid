@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { prisma, logUserActivity } from '@/lib/db';
-import { type TransactionClient } from '@/lib/db';
+import { prisma } from '@/lib/db';
+
 export const dynamic = 'force-dynamic';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // 1. Typed as Promise for Next.js 15+
-) {
+export async function POST(request: NextRequest) {
   try {
-    // 2. Await params before destructuring
-    const { id: auctionId } = await params;
-
-    if (!auctionId) {
-      return NextResponse.json(
-        { success: false, message: 'Auction ID is missing from request.' },
-        { status: 400 }
-      );
-    }
-
-    // 3. Authenticate via Cookie
+    // 1. Authenticate via JWT Cookie
     const token =
       request.cookies.get('token')?.value ||
       request.cookies.get('user_session')?.value;
@@ -41,28 +28,16 @@ export async function POST(
       );
     }
 
-    const userId = decoded.id || decoded.userId;
-    const userEmail = decoded.email;
+    // 2. Parse & Validate Input
+    const body = await request.json().catch(() => null);
+    const { amount, auctionId } = body || {};
 
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          ...(userEmail ? [{ email: userEmail }] : []),
-          ...(userId ? [{ id: userId }] : []),
-        ],
-      },
-    });
-
-    if (!user) {
+    if (!auctionId || typeof auctionId !== 'string') {
       return NextResponse.json(
-        { success: false, message: 'User account not found.' },
-        { status: 404 }
+        { success: false, message: 'Auction ID is required.' },
+        { status: 400 }
       );
     }
-
-    // 4. Parse Request Body
-    const body = await request.json().catch(() => null);
-    const { amount } = body || {};
 
     if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
       return NextResponse.json(
@@ -71,83 +46,79 @@ export async function POST(
       );
     }
 
-    // 5. Atomic Prisma Transaction
-    const result = await prisma.$transaction(
-      async (tx: TransactionClient) => {
-        const auction = await tx.auction.findUnique({
-          where: { id: auctionId },
-        });
+    // 3. Atomic Database Operations
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({
+        where: {
+          OR: [{ email: decoded.email }, { id: decoded.id || decoded.userId }],
+        },
+      });
 
-        if (!auction) {
-          throw new Error('NOT_FOUND');
-        }
+      if (!user) {
+        throw new Error('USER_NOT_FOUND');
+      }
 
-        if (auction.sellerId === user.id) {
-          throw new Error('SELF_BIDDING');
-        }
+      const auction = await tx.auction.findUnique({
+        where: { id: auctionId },
+        include: { bids: true },
+      });
 
-        const isEnded =
-          auction.status === 'ENDED' ||
-          auction.status === 'PAID' ||
-          (auction.endTime && new Date(auction.endTime).getTime() <= Date.now());
+      if (!auction) {
+        throw new Error('AUCTION_NOT_FOUND');
+      }
 
-        if (isEnded) {
-          throw new Error('AUCTION_ENDED');
-        }
+      if (auction.sellerId === user.id) {
+        throw new Error('SELF_BIDDING_FORBIDDEN');
+      }
 
-        const minIncrement = auction.minIncrement || 1;
-        const currentHighPrice = auction.currentPrice ?? auction.startingBid ?? 0;
-        const minRequiredBid = currentHighPrice + minIncrement;
+      const isEnded =
+        auction.status === 'ENDED' ||
+        auction.status === 'PAID' ||
+        (auction.endTime && new Date(auction.endTime).getTime() <= Date.now());
 
-        if (amount < minRequiredBid) {
-          throw new Error(`BID_TOO_LOW:$${minRequiredBid.toFixed(2)}`);
-        }
+      if (isEnded) {
+        throw new Error('AUCTION_ENDED');
+      }
 
-        // Conditional optimistic update
-        const updatedAuction = await tx.auction.updateMany({
-          where: {
-            id: auction.id,
-            currentPrice: auction.currentPrice,
-          },
-          data: {
-            currentPrice: amount,
-            highestBidderId: user.id,
-          },
-        });
+      const minIncrement = auction.minIncrement || 1;
+      const currentHighPrice = auction.currentPrice ?? auction.startingBid ?? 0;
+      const minRequiredBid = currentHighPrice + minIncrement;
 
-        if (updatedAuction.count === 0) {
-          throw new Error('RACE_CONDITION_RETRY');
-        }
+      if (amount < minRequiredBid) {
+        throw new Error(`BID_TOO_LOW:$${minRequiredBid.toFixed(2)}`);
+      }
 
-        const newBid = await tx.bid.create({
-          data: {
-            amount,
-            auctionId: auction.id,
-            userId: user.id,
-          },
-          include: {
-            user: { select: { id: true, name: true, avatar: true } },
-          },
-        });
+      const newBid = await tx.bid.create({
+        data: {
+          amount,
+          auctionId: auction.id,
+          userId: user.id,
+        },
+        include: {
+          user: { select: { id: true, name: true, avatar: true } },
+        },
+      });
 
-        const totalBids = await tx.bid.count({
-          where: { auctionId: auction.id },
-        });
+      const updatedAuction = await tx.auction.update({
+        where: { id: auction.id },
+        data: {
+          currentPrice: amount,
+          highestBidderId: user.id,
+        },
+        include: { bids: true },
+      });
 
-        return { newBid, currentPrice: amount, totalBids, title: auction.title };
-      },
-      { isolationLevel: 'Serializable' }
-    );
+      await tx.activity.create({
+        data: {
+          userId: user.id,
+          action: 'BID_PLACED',
+          amount,
+          details: `Placed bid of $${amount} on "${auction.title}"`,
+        },
+      });
 
-    // 6. Log Activity
-    if (typeof logUserActivity === 'function') {
-      await logUserActivity({
-        userId: user.id,
-        action: 'BID_PLACED',
-        amount,
-        details: `Placed bid of $${amount} on "${result.title}"`,
-      }).catch((e) => console.error('Failed to log user activity:', e));
-    }
+      return { newBid, updatedAuction };
+    });
 
     return NextResponse.json({
       success: true,
@@ -159,38 +130,37 @@ export async function POST(
           bidderId: result.newBid.userId,
           bidderName: result.newBid.user?.name || 'Anonymous',
           bidderAvatar: result.newBid.user?.avatar || '',
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(result.newBid.timestamp).toISOString(),
         },
         auction: {
-          id: auctionId,
-          currentHighestBid: result.currentPrice,
-          bidsCount: result.totalBids,
+          id: result.updatedAuction.id,
+          currentHighestBid: result.updatedAuction.currentPrice,
+          bidsCount: result.updatedAuction.bids.length,
+          status: result.updatedAuction.status,
         },
       },
     });
   } catch (error: any) {
-    console.error('Bidding Error:', error);
-    const msg = error?.message || '';
-
-    if (msg === 'NOT_FOUND') {
+    if (error.message === 'USER_NOT_FOUND') {
+      return NextResponse.json({ success: false, message: 'User account not found.' }, { status: 404 });
+    }
+    if (error.message === 'AUCTION_NOT_FOUND') {
       return NextResponse.json({ success: false, message: 'Auction not found.' }, { status: 404 });
     }
-    if (msg === 'SELF_BIDDING') {
-      return NextResponse.json({ success: false, message: 'You cannot bid on your own auction.' }, { status: 400 });
+    if (error.message === 'SELF_BIDDING_FORBIDDEN') {
+      return NextResponse.json({ success: false, message: 'You cannot place a bid on your own auction.' }, { status: 400 });
     }
-    if (msg === 'AUCTION_ENDED') {
+    if (error.message === 'AUCTION_ENDED') {
       return NextResponse.json({ success: false, message: 'This auction has already concluded.' }, { status: 400 });
     }
-    if (msg.startsWith('BID_TOO_LOW:')) {
-      const minReq = msg.split(':')[1];
-      return NextResponse.json({ success: false, message: `Another bid was placed! Minimum bid is now ${minReq}.` }, { status: 409 });
-    }
-    if (msg === 'RACE_CONDITION_RETRY') {
-      return NextResponse.json({ success: false, message: 'Another user placed a bid just before you! Please try again.' }, { status: 409 });
+    if (error.message?.startsWith('BID_TOO_LOW:')) {
+      const minBid = error.message.split(':')[1];
+      return NextResponse.json({ success: false, message: `Bid must be at least ${minBid}.` }, { status: 400 });
     }
 
+    console.error('Bidding Error:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to process bid submission.' },
+      { success: false, message: error?.message || 'Failed to process bid submission.' },
       { status: 500 }
     );
   }
