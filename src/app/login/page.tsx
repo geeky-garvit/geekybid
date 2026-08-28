@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,13 +9,16 @@ import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { loginSchema, LoginFormData } from '@/lib/validation';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { loginUser } = useAuth();
+  
+  // Guard route: false indicates this page is for unauthenticated users
   const { loading } = useAuthGuard(false);
-  if (loading) {
-    return <div className="flex justify-center p-12">Loading...</div>;
-  }
+
+  // Always declare hooks unconditionally before any early returns
   const {
     register,
     handleSubmit,
@@ -27,6 +30,14 @@ export default function LoginPage() {
       password: '',
     },
   });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const onSubmit = async (data: LoginFormData) => {
     const toastId = toast.loading('Signing you in...');
@@ -52,8 +63,11 @@ export default function LoginPage() {
         description: `Signed in as ${resData.user?.name || resData.user?.email}`,
       });
 
-      // Redirect user to marketplace
-      router.push('/auctions');
+      // Extract target destination set by middleware or direct link
+      const redirectTo = searchParams.get('redirectTo') || searchParams.get('next') || '/auctions';
+      const targetPath = redirectTo.startsWith('/') ? redirectTo : '/auctions';
+
+      router.push(targetPath);
       router.refresh();
     } catch (err: any) {
       toast.error('Login Failed', {
