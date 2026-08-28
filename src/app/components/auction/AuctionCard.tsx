@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
@@ -13,13 +13,39 @@ interface AuctionCardProps {
 }
 
 export default function AuctionCard({
-  auction,
+  auction: initialAuction,
   initialIsWatchlisted = false,
   onWatchlistToggle,
 }: AuctionCardProps) {
   const { user } = useAuth();
+  
+  // Keep local state for auction data to allow instant optimistic updates
+  const [auction, setAuction] = useState<Auction>(initialAuction);
   const [isWatchlisted, setIsWatchlisted] = useState(initialIsWatchlisted);
   const [loading, setLoading] = useState(false);
+
+  // Sync state if props change
+  useEffect(() => {
+    setAuction(initialAuction);
+  }, [initialAuction]);
+
+  // Sync state across components when a bid event is dispatched anywhere in the app
+  useEffect(() => {
+    const handleBidUpdate = (event: CustomEvent<{ auctionId: string; amount: number; bidsCount?: number }>) => {
+      if (event.detail && event.detail.auctionId === auction.id) {
+        setAuction((prev) => ({
+          ...prev,
+          currentHighestBid: event.detail.amount,
+          bidsCount: event.detail.bidsCount ?? prev.bidsCount + 1,
+        }));
+      }
+    };
+
+    window.addEventListener('auction-bid-updated' as any, handleBidUpdate);
+    return () => {
+      window.removeEventListener('auction-bid-updated' as any, handleBidUpdate);
+    };
+  }, [auction.id]);
 
   const isLive = auction.status === 'live';
   const mainImage =
@@ -28,7 +54,6 @@ export default function AuctionCard({
       : 'https://picsum.photos/seed/fallback/600/600';
 
   const handleWatchlistClick = async (e: React.MouseEvent) => {
-    // Prevent navigating to the auction detail page when clicking the heart button
     e.preventDefault();
     e.stopPropagation();
 
@@ -53,7 +78,6 @@ export default function AuctionCard({
 
       const data = await res.json();
       if (!data.success) {
-        // Revert on database failure
         setIsWatchlisted(!nextState);
       } else if (onWatchlistToggle) {
         onWatchlistToggle(auction.id, data.isWatchlisted);

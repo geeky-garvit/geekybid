@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 interface WatchlistButtonProps {
@@ -8,10 +8,24 @@ interface WatchlistButtonProps {
   initialIsWatchlisted?: boolean;
 }
 
-export default function WatchlistButton({ auctionId, initialIsWatchlisted = false }: WatchlistButtonProps) {
-  const { user } = useAuth();
-  const [isWatchlisted, setIsWatchlisted] = useState(initialIsWatchlisted);
+export default function WatchlistButton({
+  auctionId,
+  initialIsWatchlisted = false,
+}: WatchlistButtonProps) {
+  const { user, watchlist, setWatchlist } = useAuth() as any;
+  
+  // Sync initial state directly or fall back to checking global context
+  const isCurrentlyInWatchlist =
+    watchlist?.some((item: any) => item.id === auctionId || item === auctionId) ??
+    initialIsWatchlisted;
+
+  const [isWatchlisted, setIsWatchlisted] = useState(isCurrentlyInWatchlist);
   const [loading, setLoading] = useState(false);
+
+  // Keep local state in sync when parent props or global context changes
+  useEffect(() => {
+    setIsWatchlisted(isCurrentlyInWatchlist);
+  }, [isCurrentlyInWatchlist]);
 
   const toggleWatchlist = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -22,9 +36,24 @@ export default function WatchlistButton({ auctionId, initialIsWatchlisted = fals
       return;
     }
 
-    // Optimistic UI update
-    setIsWatchlisted((prev) => !prev);
+    const nextState = !isWatchlisted;
+    
+    // 1. Optimistic Local UI Update
+    setIsWatchlisted(nextState);
     setLoading(true);
+
+    // 2. Optimistic Context Watchlist Update (Refreshes Navbar badge immediately)
+    if (setWatchlist && watchlist) {
+      if (nextState) {
+        setWatchlist([...watchlist, { id: auctionId }]);
+      } else {
+        setWatchlist(
+          watchlist.filter(
+            (item: any) => item.id !== auctionId && item !== auctionId
+          )
+        );
+      }
+    }
 
     try {
       const res = await fetch('/api/watchlist', {
@@ -37,13 +66,15 @@ export default function WatchlistButton({ auctionId, initialIsWatchlisted = fals
       });
 
       const data = await res.json();
-      if (!data.success) {
-        // Revert on failure
-        setIsWatchlisted((prev) => !prev);
+      
+      if (!res.ok || !data.success) {
+        // Revert on API failure
+        setIsWatchlisted(!nextState);
       }
     } catch (err) {
       console.error('Watchlist toggle error:', err);
-      setIsWatchlisted((prev) => !prev);
+      // Revert on network failure
+      setIsWatchlisted(!nextState);
     } finally {
       setLoading(false);
     }
@@ -51,10 +82,11 @@ export default function WatchlistButton({ auctionId, initialIsWatchlisted = fals
 
   return (
     <button
+      type="button"
       onClick={toggleWatchlist}
       disabled={loading}
       title={isWatchlisted ? 'Remove from Watchlist' : 'Add to Watchlist'}
-      className="absolute top-3 right-3 bg-white/90 p-2 rounded-full shadow-md hover:bg-white transition text-xs hover:scale-110 active:scale-95 z-10"
+      className="absolute top-3 right-3 bg-white/90 p-2 rounded-full shadow-md hover:bg-white transition text-xs hover:scale-110 active:scale-95 z-10 cursor-pointer disabled:opacity-50"
     >
       {isWatchlisted ? '❤️' : '🤍'}
     </button>
