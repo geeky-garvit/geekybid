@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
-
+import { type TransactionClient } from '@/lib/db';
 export interface PlaceBidResponse {
   success: boolean;
   message: string;
@@ -27,7 +27,7 @@ export async function placeBidAction(
     }
 
     // 2. Perform Atomic Transaction with Pessimistic Locking
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: TransactionClient) => {
       // Lock auction row (SELECT ... FOR UPDATE) to eliminate concurrent race conditions
       const auctions: any[] = await tx.$queryRaw`
         SELECT * FROM "Auction" WHERE id = ${auctionId} FOR UPDATE

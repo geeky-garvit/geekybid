@@ -61,7 +61,7 @@ async function getHomepageAuctions(): Promise<HomeAuction[]> {
     },
   });
 
-  return auctions.map((auction) => ({
+  return auctions.map((auction :any) => ({
     id: auction.id,
     title: auction.title,
     description: auction.description,

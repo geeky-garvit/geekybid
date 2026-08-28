@@ -113,7 +113,7 @@ export default async function AuctionsPage({
   const rawItems = hasMore ? dbAuctions.slice(0, limit) : dbAuctions;
   const initialNextCursor = hasMore ? rawItems[rawItems.length - 1].id : null;
 
-  const items = rawItems.map((a) => {
+  const items = rawItems.map(( a :any) => {
     let mappedStatus: 'live' | 'ended' | 'paid' = 'live';
     const normalized = a.status.toLowerCase();
 
@@ -141,7 +141,7 @@ export default async function AuctionsPage({
       sellerName: a.seller?.name || 'Seller',
       sellerAvatar: a.seller?.avatar || '',
       bidsCount: a._count.bids,
-      history: a.bids.map((b) => {
+      history: a.bids.map((b : any) => {
         const isoTimeString = b.timestamp.toISOString();
         return {
           id: b.id,

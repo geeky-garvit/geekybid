@@ -1,3 +1,4 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
 
@@ -9,7 +10,7 @@ const BOT_BIDDERS = [
   { name: 'RareFindsHQ', avatar: 'https://api.dicebear.com/9.x/avataaars/svg?seed=RareFindsHQ' },
 ];
 
-export async function syncAndSimulateAuctions() {
+async function syncAndSimulateAuctions() {
   const now = new Date();
 
   // Step 1: Automatically close expired auctions in bulk
@@ -23,7 +24,7 @@ export async function syncAndSimulateAuctions() {
     },
   });
 
-  // Step 2: Fetch all active auctions to simulate activity & format response
+  // Step 2: Fetch all active auctions to simulate activity
   const activeAuctions = await prisma.auction.findMany({
     where: {
       status: { in: ['ACTIVE', 'active'] },
@@ -46,7 +47,7 @@ export async function syncAndSimulateAuctions() {
 
     if (shouldSimulateBid) {
       const bot = BOT_BIDDERS[Math.floor(Math.random() * BOT_BIDDERS.length)];
-      
+
       // Ensure bot user exists in database
       const botUser = await prisma.user.upsert({
         where: { email: `${bot.name.toLowerCase()}@bot.marketplace` },
@@ -112,4 +113,30 @@ export async function syncAndSimulateAuctions() {
     sellerName: a.seller?.name || 'Seller',
     bidsCount: a._count.bids,
   }));
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const auctions = await syncAndSimulateAuctions();
+    return NextResponse.json({ success: true, auctions });
+  } catch (error) {
+    console.error('Failed to sync auctions:', error);
+    return NextResponse.json(
+      { success: false, message: 'Failed to sync auctions' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const auctions = await syncAndSimulateAuctions();
+    return NextResponse.json({ success: true, auctions });
+  } catch (error) {
+    console.error('Failed to sync auctions:', error);
+    return NextResponse.json(
+      { success: false, message: 'Failed to sync auctions' },
+      { status: 500 }
+    );
+  }
 }

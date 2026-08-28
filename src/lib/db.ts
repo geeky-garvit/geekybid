@@ -4,6 +4,10 @@ import { neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 import bcrypt from 'bcryptjs';
 
+// Explicit re-exports to resolve module resolution and namespace issues across API routes & actions
+export type TransactionClient = Prisma.TransactionClient;
+export { PrismaClient, Prisma };
+
 // Enable WebSocket connections for serverless & edge runtime support
 if (typeof window === 'undefined') {
   neonConfig.webSocketConstructor = ws;
@@ -297,6 +301,8 @@ export async function closeExpiredAuctions() {
   return expiredAuctions.length;
 }
 
+export type CompletedAuctionItem = Prisma.PromiseReturnType<typeof getCompletedAuctions>[number];
+
 export async function getCompletedAuctions() {
   await closeExpiredAuctions();
 
@@ -330,7 +336,7 @@ export async function getCompletedAuctions() {
     },
   });
 
-  return auctions.map((auction) => ({
+  return auctions.map((auction: typeof auctions[number]) => ({
     ...auction,
     winner: auction.highestBidder,
   }));

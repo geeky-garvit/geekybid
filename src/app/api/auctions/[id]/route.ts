@@ -65,7 +65,7 @@ export async function GET(
     }
 
     // Map formatted bid array
-    const formattedBids = auction.bids.map((b) => {
+    const formattedBids = auction.bids.map((b:any) => {
       const isoTimeString = new Date(b.timestamp).toISOString();
       return {
         id: b.id,

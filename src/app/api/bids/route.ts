@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { prisma, logUserActivity } from '@/lib/db';
-
+import { type TransactionClient } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 export async function POST(
@@ -73,7 +73,7 @@ export async function POST(
 
     // 5. Atomic Prisma Transaction
     const result = await prisma.$transaction(
-      async (tx) => {
+      async (tx: TransactionClient) => {
         const auction = await tx.auction.findUnique({
           where: { id: auctionId },
         });

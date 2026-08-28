@@ -42,7 +42,7 @@ export default async function QuickViewAuctionModal({
   }
 
   // Normalize Prisma object to match client component structures
-  const history = dbAuction.bids.map((b) => {
+  const history = dbAuction.bids.map((b:any) => {
     const isoTimeString = b.timestamp.toISOString();
     return {
       id: b.id,

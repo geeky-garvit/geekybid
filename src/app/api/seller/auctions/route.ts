@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
     const now = new Date();
 
-    const normalizedAuctions = auctions.map((a) => {
+    const normalizedAuctions = auctions.map((a :any) => {
       let mappedStatus: 'live' | 'ended' | 'paid' = 'live';
       const normalized = a.status.toLowerCase();
 
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
         sellerName: a.seller?.name || 'Seller',
         sellerAvatar: a.seller?.avatar || '',
         bidsCount: a._count.bids,
-        history: a.bids.map((b) => {
+        history: a.bids.map((b : any) => {
           const isoTimeString = b.timestamp.toISOString();
           return {
             id: b.id,

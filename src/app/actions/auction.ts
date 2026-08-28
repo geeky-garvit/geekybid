@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
-
+import { type TransactionClient } from '@/lib/db';
 export interface CreateAuctionInput {
   title: string;
   description: string;
@@ -76,7 +76,7 @@ export async function placeBidAction(
     // --------------------------------------------------
     // 4. ATOMIC TRANSACTION WITH ROW LOCKING
     // --------------------------------------------------
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: TransactionClient) => {
       // Lock auction row to prevent race conditions
       const auctions = await tx.$queryRaw<
         Array<{
@@ -218,7 +218,7 @@ export async function createAuctionAction(data: CreateAuctionInput) {
     const startPrice = Number(data.startingBid);
     const increment = Number(data.minIncrement || 5.0);
 
-    const newAuction = await prisma.$transaction(async (tx) => {
+    const newAuction = await prisma.$transaction(async (tx: TransactionClient) => {
       const auction = await tx.auction.create({
         data: {
           title: data.title.trim(),

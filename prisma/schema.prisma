@@ -1,6 +1,5 @@
 datasource db {
   provider = "postgresql"
-  
 }
 
 generator client {
@@ -8,16 +7,17 @@ generator client {
 }
 
 model User {
-  id               String            @id @default(uuid())
-  name             String
-  email            String            @unique
-  password         String
-  avatar           String?
-  role             String            @default("collector")
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  avatar    String?
+  role      String   @default("collector")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   auctions         Auction[]         @relation("SellerAuctions")
+  winningAuctions  Auction[]         @relation("HighestBidderRelation")
   bids             Bid[]
   activities       Activity[]
   ownedCommunity   Community?
@@ -25,26 +25,28 @@ model User {
 }
 
 model Auction {
-  id              String          @id @default(uuid())
-  title           String
-  description     String
-  category        String
-  startingBid     Float
-  currentPrice    Float
-  minIncrement    Float           @default(5.0)
-  status          String          @default("ACTIVE") // ACTIVE, ENDED, PAID
-  images          String[]
-  attributes      Json?
-  endTime         DateTime
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id           String   @id @default(uuid())
+  title        String
+  description  String
+  category     String
+  startingBid  Float
+  currentPrice Float
+  minIncrement Float    @default(5.0)
+  status       String   @default("ACTIVE") // ACTIVE, ENDED, PAID
+  images       String[]
+  attributes   Json?
+  endTime      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  sellerId        String
-  seller          User            @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId String
+  seller   User   @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
+
   highestBidderId String?
+  highestBidder   User?   @relation("HighestBidderRelation", fields: [highestBidderId], references: [id])
 
-  bids            Bid[]
-  viewers         AuctionViewer[]
+  bids    Bid[]
+  viewers AuctionViewer[]
 }
 
 model Bid {
@@ -53,10 +55,10 @@ model Bid {
   timestamp DateTime @default(now())
 
   auctionId String
-  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  auction   Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Activity {
@@ -66,31 +68,31 @@ model Activity {
   amount    Float?
   timestamp DateTime @default(now())
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Community {
-  id        String            @id @default(uuid())
+  id        String   @id @default(uuid())
   title     String
-  createdAt DateTime          @default(now())
+  createdAt DateTime @default(now())
 
-  sellerId  String            @unique
-  seller    User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId String @unique
+  seller   User   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
-  members   CommunityMember[]
+  members CommunityMember[]
 }
 
 model CommunityMember {
-  id          String    @id @default(uuid())
-  role        String    @default("MEMBER")
-  joinedAt    DateTime  @default(now())
+  id       String   @id @default(uuid())
+  role     String   @default("MEMBER")
+  joinedAt DateTime @default(now())
 
   communityId String
   community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([communityId, userId])
 }
@@ -101,7 +103,7 @@ model AuctionViewer {
   sessionId String
   lastSeen  DateTime @updatedAt
 
-  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 
   @@unique([auctionId, sessionId])
   @@index([auctionId])
