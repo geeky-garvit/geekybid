@@ -8,11 +8,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { loginSchema, LoginFormData } from '@/lib/validation';
-
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 export default function LoginPage() {
   const router = useRouter();
   const { loginUser } = useAuth();
-
+  const { loading } = useAuthGuard(false);
+  if (loading) {
+    return <div className="flex justify-center p-12">Loading...</div>;
+  }
   const {
     register,
     handleSubmit,

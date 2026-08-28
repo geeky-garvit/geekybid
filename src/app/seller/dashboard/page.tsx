@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 interface BidHistory {
   id: string;
@@ -45,7 +46,10 @@ interface ActivityItem {
 }
 
 export default function SellerDashboardPage() {
-  const { user, isLoaded } = useAuth();
+  // 1. Guard route: Automatically redirects to /login if user is not authenticated
+  const { user, loading: authLoading } = useAuthGuard(true);
+  const { isLoaded } = useAuth();
+
   const [sellerAuctions, setSellerAuctions] = useState<Auction[]>([]);
   const [activeTab, setActiveTab] = useState<'listings' | 'bids' | 'sold'>('listings');
   const [isLoading, setIsLoading] = useState(true);
@@ -73,29 +77,12 @@ export default function SellerDashboardPage() {
     }
   }, [user?.id, fetchSellerAuctions]);
 
-  if (!isLoaded) {
+  // 2. Fallback UI while verifying session token
+  if (authLoading || !isLoaded || !user) {
     return (
       <div className="max-w-4xl mx-auto py-16 px-4 text-center space-y-4">
         <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" />
         <p className="text-slate-500 text-xs font-semibold">Verifying seller access...</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="max-w-4xl mx-auto py-16 px-4 text-center space-y-4">
-        <span className="text-3xl block">🔒</span>
-        <h2 className="text-2xl font-black text-slate-900">Please Log In</h2>
-        <p className="text-slate-500 text-xs">
-          Select a profile or sign in to access your seller central dashboard.
-        </p>
-        <Link
-          href={`/login?redirectTo=${encodeURIComponent('/seller/dashboard')}`}
-          className="inline-block bg-purple-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl hover:bg-purple-700 transition"
-        >
-          Sign In
-        </Link>
       </div>
     );
   }

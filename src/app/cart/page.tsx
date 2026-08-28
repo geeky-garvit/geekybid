@@ -2,14 +2,15 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { useCart } from '@/context/CartContext';
 import { createOrder } from '@/lib/store';
 import { useNotifications } from '@/context/NotificationContext';
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  // Destructure 'loading' as 'authLoading' directly from useAuthGuard
+  const { user, loading: authLoading } = useAuthGuard(true);
   const { cart, subtotal, clearCart } = useCart();
   const { notify } = useNotifications();
 
@@ -27,7 +28,7 @@ export default function CheckoutPage() {
     e.preventDefault();
 
     if (!user) {
-      alert('Please log in to complete checkout.');
+      router.push('/login');
       return;
     }
 
@@ -53,6 +54,15 @@ export default function CheckoutPage() {
       setLoading(false);
     }
   };
+
+  // Prevent UI flashing while checking authentication state
+  if (authLoading || !user) {
+    return (
+      <div className="flex justify-center items-center min-h-[50vh]">
+        <p className="text-slate-500 font-medium text-sm">Verifying session...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">

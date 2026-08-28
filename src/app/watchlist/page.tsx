@@ -1,25 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { useState, useEffect } from 'react';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
+import { useState, useEffect, useCallback } from 'react';
 import AuctionCard from '@/app/components/auction/AuctionCard';
 
 export default function WatchlistPage() {
-  const { user, isLoaded } = useAuth();
-  const router = useRouter();
+  // 1. Enforce route guard: automatically redirects unauthenticated users to /login
+  const { user, loading: authLoading } = useAuthGuard(true);
+  const { isLoaded } = useAuth();
+
   const [savedAuctions, setSavedAuctions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Guard route: redirect if unauthenticated
-  useEffect(() => {
-    if (isLoaded && !user) {
-      router.push('/login?next=%2Fwatchlist');
-    }
-  }, [isLoaded, user, router]);
-
-  const fetchWatchlist = async () => {
+  const fetchWatchlist = useCallback(async () => {
     if (!user?.id) return;
     try {
       setIsLoading(true);
@@ -33,13 +28,13 @@ export default function WatchlistPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user?.id]);
 
   useEffect(() => {
     if (user?.id) {
       fetchWatchlist();
     }
-  }, [user?.id]);
+  }, [user?.id, fetchWatchlist]);
 
   // Remove auction instantly from local state when un-watchlisted
   const handleWatchlistToggle = (auctionId: string, isWatchlisted: boolean) => {
@@ -48,7 +43,8 @@ export default function WatchlistPage() {
     }
   };
 
-  if (!isLoaded || isLoading || !user) {
+  // 2. Prevent layout flash while checking authentication state or fetching items
+  if (authLoading || !isLoaded || (isLoading && !savedAuctions.length)) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
         <div className="h-8 w-48 bg-slate-200 animate-pulse rounded-lg" />
