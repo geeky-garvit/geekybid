@@ -12,65 +12,95 @@ export default function AdminDashboardPage() {
   const [auctions, setAuctions] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const [passkey, setPasskey] = useState('');
   const [passkeyError, setPasskeyError] = useState('');
 
-  // 1. Fetch live data from PostgreSQL via our API routes
+  // 1. Check client mount & sessionStorage safely to prevent Next.js SSR crashes
+  useEffect(() => {
+    setIsMounted(true);
+    if (typeof window !== 'undefined') {
+      const unlocked = sessionStorage.getItem('geekybid_admin_unlocked') === 'true';
+      setAdminUnlocked(unlocked);
+    }
+  }, []);
+
+  // 2. Fetch live data with defensive error handling
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
+    
+    // Fetch Auctions Data safely
     try {
       const res = await fetch('/api/auctions?status=all&limit=100');
-      const data = await res.json();
-      
-      if (data.success) {
-        setAuctions(data.data || []);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setAuctions(data.data || []);
+        }
       }
-      
-      // Fetch orders if an API endpoint exists, or fallback to an empty list
+    } catch (err) {
+      console.error('Failed to fetch auctions from API:', err);
+    }
+
+    // Fetch Orders Data safely
+    try {
       const ordersRes = await fetch('/api/orders');
       if (ordersRes.ok) {
         const ordersData = await ordersRes.json();
-        setOrders(ordersData.orders || []);
+        setOrders(ordersData.orders || ordersData.data || []);
       }
     } catch (err) {
-      console.error('Failed to load admin data from database:', err);
+      console.error('Failed to fetch orders from API:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    setAdminUnlocked(sessionStorage.getItem('geekybid_admin_unlocked') === 'true');
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
-  // 2. Handle Closing Auctions via Server Action
-  const handleCloseAuction = useCallback(async (auctionId: string) => {
-    const result = await adminCloseAuctionAction(auctionId);
-    if (result.success) {
-      setAuctions((prev) =>
-        prev.map((item) =>
-          item.id === auctionId ? { ...item, status: 'ENDED' } : item
-        )
-      );
+    if (adminUnlocked) {
+      fetchDashboardData();
     } else {
-      alert(result.error || 'Failed to close auction');
+      setLoading(false);
+    }
+  }, [adminUnlocked, fetchDashboardData]);
+
+  // 3. Handle Closing Auctions via Server Action
+  const handleCloseAuction = useCallback(async (auctionId: string) => {
+    try {
+      const result = await adminCloseAuctionAction(auctionId);
+      if (result?.success) {
+        setAuctions((prev) =>
+          prev.map((item) =>
+            item.id === auctionId ? { ...item, status: 'ENDED' } : item
+          )
+        );
+      } else {
+        alert(result?.error || 'Failed to close auction');
+      }
+    } catch (err) {
+      console.error('Error closing auction:', err);
+      alert('An unexpected error occurred while closing the auction.');
     }
   }, []);
 
-  // 3. Handle Deleting Auctions via Server Action
+  // 4. Handle Deleting Auctions via Server Action
   const handleDeleteAuction = useCallback(async (auctionId: string) => {
     if (!confirm('Are you sure you want to delete this auction listing?')) return;
     
-    const result = await adminDeleteAuctionAction(auctionId);
-    if (result.success) {
-      setAuctions((prev) => prev.filter((item) => item.id !== auctionId));
-    } else {
-      alert(result.error || 'Failed to delete auction');
+    try {
+      const result = await adminDeleteAuctionAction(auctionId);
+      if (result?.success) {
+        setAuctions((prev) => prev.filter((item) => item.id !== auctionId));
+      } else {
+        alert(result?.error || 'Failed to delete auction');
+      }
+    } catch (err) {
+      console.error('Error deleting auction:', err);
+      alert('An unexpected error occurred while deleting the auction.');
     }
   }, []);
 
-  // 4. Handle Payment Status Toggle
+  // 5. Handle Payment Status Toggle
   const handleTogglePaymentStatus = useCallback(async (orderId: string) => {
     try {
       const res = await fetch(`/api/orders/${orderId}/toggle-payment`, {
@@ -88,7 +118,7 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
-  // 5. Compute real metrics based on DB state
+  // 6. Compute metrics
   const totalRevenue = useMemo(
     () =>
       orders
@@ -98,10 +128,20 @@ export default function AdminDashboardPage() {
   );
 
   const liveAuctionsCount = useMemo(
-    () => auctions.filter((auction) => auction.status === 'ACTIVE').length,
+    () => auctions.filter((auction) => auction.status === 'ACTIVE' || auction.status === 'live').length,
     [auctions]
   );
 
+  // Prevent hydration mismatches before mounting
+  if (!isMounted) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto" />
+      </div>
+    );
+  }
+
+  // Passkey Lock Screen
   if (!adminUnlocked) {
     return (
       <div className="max-w-md mx-auto px-4 py-20">
@@ -109,7 +149,9 @@ export default function AdminDashboardPage() {
           onSubmit={(event) => {
             event.preventDefault();
             if (passkey === 'ankur sir jindabad') {
-              sessionStorage.setItem('geekybid_admin_unlocked', 'true');
+              if (typeof window !== 'undefined') {
+                sessionStorage.setItem('geekybid_admin_unlocked', 'true');
+              }
               setAdminUnlocked(true);
             } else {
               setPasskeyError('Incorrect passkey.');
@@ -137,7 +179,10 @@ export default function AdminDashboardPage() {
           {passkeyError && (
             <p className="text-xs font-semibold text-rose-600">{passkeyError}</p>
           )}
-          <button className="w-full rounded-xl bg-purple-600 py-2.5 text-xs font-bold text-white hover:bg-purple-700">
+          <button 
+            type="submit"
+            className="w-full rounded-xl bg-purple-600 py-2.5 text-xs font-bold text-white hover:bg-purple-700 transition"
+          >
             Unlock Admin
           </button>
         </form>
@@ -145,6 +190,7 @@ export default function AdminDashboardPage() {
     );
   }
 
+  // Loading State
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-16 text-center">
@@ -156,6 +202,7 @@ export default function AdminDashboardPage() {
     );
   }
 
+  // Admin Dashboard View
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-6">
@@ -179,6 +226,7 @@ export default function AdminDashboardPage() {
 
       <div className="flex gap-2 border-b border-slate-200 pb-2">
         <button
+          type="button"
           onClick={() => setActiveTab('auctions')}
           className={`px-4 py-2 text-xs font-bold rounded-xl transition ${
             activeTab === 'auctions'
@@ -189,6 +237,7 @@ export default function AdminDashboardPage() {
           Auctions Management ({auctions.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('orders')}
           className={`px-4 py-2 text-xs font-bold rounded-xl transition ${
             activeTab === 'orders'
