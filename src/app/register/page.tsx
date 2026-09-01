@@ -13,6 +13,10 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  
+  // Visibility Toggles
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const {
     register,
@@ -24,6 +28,7 @@ export default function RegisterPage() {
       name: '',
       email: '',
       password: '',
+      confirmPassword: '',
     },
   });
 
@@ -34,7 +39,11 @@ export default function RegisterPage() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          password: data.password,
+        }),
       });
 
       const resData = await res.json();
@@ -43,7 +52,6 @@ export default function RegisterPage() {
         throw new Error(resData.message || resData.error || 'Failed to create account.');
       }
 
-      // Redirect user to marketplace or home page
       router.push('/auctions');
       router.refresh();
     } catch (err: any) {
@@ -69,6 +77,7 @@ export default function RegisterPage() {
         )}
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit(onSubmit)}>
+          {/* Full Name */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
               Full Name
@@ -90,6 +99,7 @@ export default function RegisterPage() {
             )}
           </div>
 
+          {/* Email */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
               Email
@@ -111,20 +121,30 @@ export default function RegisterPage() {
             )}
           </div>
 
+          {/* Password */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
               Password
             </label>
-            <input
-              type="password"
-              {...register('password')}
-              className={`w-full px-4 py-3 rounded-xl border text-slate-900 font-medium text-sm transition focus:outline-none focus:ring-2 ${
-                errors.password
-                  ? 'border-rose-500 focus:ring-rose-200'
-                  : 'border-slate-200 focus:ring-purple-600'
-              }`}
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                {...register('password')}
+                className={`w-full px-4 py-3 pr-12 rounded-xl border text-slate-900 font-medium text-sm transition focus:outline-none focus:ring-2 ${
+                  errors.password
+                    ? 'border-rose-500 focus:ring-rose-200'
+                    : 'border-slate-200 focus:ring-purple-600'
+                }`}
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 text-xs font-semibold transition"
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
             {errors.password && (
               <p className="mt-1.5 text-xs font-semibold text-rose-600">
                 {errors.password.message}
@@ -132,10 +152,41 @@ export default function RegisterPage() {
             )}
           </div>
 
+          {/* Confirm Password */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                {...register('confirmPassword')}
+                className={`w-full px-4 py-3 pr-12 rounded-xl border text-slate-900 font-medium text-sm transition focus:outline-none focus:ring-2 ${
+                  errors.confirmPassword
+                    ? 'border-rose-500 focus:ring-rose-200'
+                    : 'border-slate-200 focus:ring-purple-600'
+                }`}
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 text-xs font-semibold transition"
+              >
+                {showConfirmPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {errors.confirmPassword && (
+              <p className="mt-1.5 text-xs font-semibold text-rose-600">
+                {errors.confirmPassword.message}
+              </p>
+            )}
+          </div>
+
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-purple-200 transition duration-150 flex justify-center items-center"
+            className="w-full bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-purple-200 transition duration-150 flex justify-center items-center cursor-pointer"
           >
             {isSubmitting ? (
               <span className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
