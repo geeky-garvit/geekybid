@@ -7,13 +7,15 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { registerSchema } from '@/lib/validation';
 import { z } from 'zod';
+import { useAuth } from '@/context/AuthContext';
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { loginUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  
+
   // Visibility Toggles
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -50,6 +52,11 @@ export default function RegisterPage() {
 
       if (!res.ok || !resData.success) {
         throw new Error(resData.message || resData.error || 'Failed to create account.');
+      }
+
+      // Update global AuthContext state immediately so Navbar updates without refresh
+      if (resData.user) {
+        loginUser(resData.user);
       }
 
       router.push('/auctions');
