@@ -12,6 +12,25 @@ interface AuctionCardProps {
   onWatchlistToggle?: (auctionId: string, isWatchlisted: boolean) => void;
 }
 
+// Utility to format prices safely across large digit inputs
+const formatCurrency = (amount: number = 0): string => {
+  if (amount >= 1_000_000) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      notation: 'compact',
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+};
+
 export default function AuctionCard({
   auction: initialAuction,
   initialIsWatchlisted = false,
@@ -19,17 +38,14 @@ export default function AuctionCard({
 }: AuctionCardProps) {
   const { user } = useAuth();
   
-  // Keep local state for auction data to allow instant optimistic updates
   const [auction, setAuction] = useState<Auction>(initialAuction);
   const [isWatchlisted, setIsWatchlisted] = useState(initialIsWatchlisted);
   const [loading, setLoading] = useState(false);
 
-  // Sync state if props change
   useEffect(() => {
     setAuction(initialAuction);
   }, [initialAuction]);
 
-  // Sync state across components when a bid event is dispatched anywhere in the app
   useEffect(() => {
     const handleBidUpdate = (event: CustomEvent<{ auctionId: string; amount: number; bidsCount?: number }>) => {
       if (event.detail && event.detail.auctionId === auction.id) {
@@ -47,7 +63,7 @@ export default function AuctionCard({
     };
   }, [auction.id]);
 
-  const isLive = auction.status === 'live';
+  const isLive = (auction.status as string) === 'live' || (auction.status as string) === 'ACTIVE';
   const mainImage =
     auction.images && auction.images.length > 0
       ? auction.images[0]
@@ -106,7 +122,7 @@ export default function AuctionCard({
         />
         
         {/* Status Badge */}
-        <div className="absolute top-3 left-3">
+        <div className="absolute top-3 left-3 z-10">
           <span
             className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm ${
               isLive ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-white'
@@ -116,7 +132,7 @@ export default function AuctionCard({
           </span>
         </div>
 
-        {/* Watchlist Heart Button & Bids Count */}
+        {/* Watchlist & Bids Count */}
         <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
           <button
             type="button"
@@ -129,7 +145,7 @@ export default function AuctionCard({
           </button>
           
           <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] font-bold text-slate-800 shadow-sm">
-            {auction.bidsCount} bids
+            {auction.bidsCount ?? 0} bids
           </div>
         </div>
       </div>
@@ -148,15 +164,18 @@ export default function AuctionCard({
           </p>
         </div>
 
-        {/* Pricing / Footer */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-          <div>
+        {/* Pricing & Seller Layout Safeguards */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] uppercase font-semibold text-slate-400">Current Bid</p>
-            <p className="text-sm font-black text-slate-900">
-              ${(auction.currentHighestBid || 0).toFixed(2)}
+            <p 
+              className="text-sm font-black text-slate-900 truncate"
+              title={formatCurrency(auction.currentHighestBid ?? auction.startingPrice ?? 0)}
+            >
+              {formatCurrency(auction.currentHighestBid ?? auction.startingPrice ?? 0)}
             </p>
           </div>
-          <div className="text-right">
+          <div className="text-right shrink-0">
             <p className="text-[10px] uppercase font-semibold text-slate-400">Seller</p>
             <div className="flex items-center gap-1.5 mt-0.5 justify-end">
               <div className="relative w-4 h-4 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
@@ -168,7 +187,7 @@ export default function AuctionCard({
                   sizes="16px"
                 />
               </div>
-              <span className="text-xs font-semibold text-slate-700 truncate max-w-[80px]">
+              <span className="text-xs font-semibold text-slate-700 truncate max-w-[70px]">
                 {auction.sellerName || 'Seller'}
               </span>
             </div>
